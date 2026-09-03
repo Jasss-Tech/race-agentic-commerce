@@ -45,7 +45,7 @@ export default function MerchantGrowthPage() {
       loadRecommendations();
       setTimeout(() => setActionMessage(null), 5000);
     } catch (err: any) {
-      alert(`Approval error: ${err.message}`);
+      setActionMessage(`Approval error: ${err.message}`);
     }
   };
 
@@ -55,8 +55,10 @@ export default function MerchantGrowthPage() {
         method: 'POST'
       });
       loadRecommendations();
+      setActionMessage('Campaign proposal dismissed.');
+      setTimeout(() => setActionMessage(null), 5000);
     } catch (err: any) {
-      alert(`Reject error: ${err.message}`);
+      setActionMessage(`Reject error: ${err.message}`);
     }
   };
 

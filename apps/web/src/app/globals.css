@@ -2,64 +2,476 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   RACE DESIGN TOKENS — shadcn/ui semantic system
+   Dark-first "control plane ledger" palette derived from Razorpay navy.
+   Signal colors carry strict meaning across the whole product:
+     emerald = sealed / valid   cyan = live telemetry
+     amber   = gate under review   rose = halted / blocked
+   ========================================================================== */
 :root {
-  --foreground-rgb: 241, 245, 249;
-  --background-rgb: 9, 13, 22;
+  --background: 0 0% 0%;
+  --foreground: 213 32% 92%;
+  --card: 218 42% 7%;
+  --card-foreground: 213 32% 92%;
+  --popover: 218 46% 6%;
+  --popover-foreground: 213 32% 92%;
+  --primary: 216 84% 63%;
+  --primary-foreground: 219 50% 8%;
+  --secondary: 218 32% 12%;
+  --secondary-foreground: 213 28% 85%;
+  --muted: 218 32% 12%;
+  --muted-foreground: 215 19% 64%;
+  --accent: 218 32% 14%;
+  --accent-foreground: 213 32% 92%;
+  --destructive: 0 72% 56%;
+  --destructive-foreground: 0 0% 98%;
+  --success: 158 62% 46%;
+  --success-foreground: 0 0% 98%;
+  --warning: 38 92% 56%;
+  --warning-foreground: 32 90% 8%;
+  --signal-telemetry: 189 94% 48%;
+  --border: 0 0% 0%;
+  --input: 218 28% 17%;
+  --ring: 216 84% 63%;
+  --panel: 0 0% 0%;
+  --radius: 0.625rem;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Light theme — ThemeContext toggles `light` on <html> */
+html.light, [data-theme="light"] {
+  --background: 220 38% 97%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 217 85% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 218 28% 93%;
+  --secondary-foreground: 222 40% 20%;
+  --muted: 218 28% 94%;
+  --muted-foreground: 215 18% 40%;
+  --accent: 218 28% 92%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 74% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 158 66% 34%;
+  --success-foreground: 0 0% 100%;
+  --warning: 32 92% 40%;
+  --warning-foreground: 0 0% 100%;
+  --signal-telemetry: 192 90% 34%;
+  --border: 219 22% 86%;
+  --input: 219 22% 84%;
+  --ring: 217 85% 48%;
+  --panel: 0 0% 100%;
+}
+
+/* ==========================================================================
+   BASE LAYER
+   ========================================================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-color: hsl(var(--border));
+}
+
+html {
+  color-scheme: dark;
+  font-family: var(--font-sans);
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.light {
+  color-scheme: light;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
   min-height: 100vh;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
 }
 
-/* Glass panel utility */
+/* Typography Hierarchy — display face carries the brand voice */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground)) !important;
+  line-height: 1.2;
+}
+
+h1 { font-size: 2.25rem; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.35rem; }
+h4 { font-size: 1.15rem; }
+h5 { font-size: 1.0rem; }
+h6 { font-size: 0.875rem; }
+
+p {
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
+}
+
+a {
+  color: inherit;
+  text-decoration: none !important;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+a:hover {
+  text-decoration: none !important;
+  color: hsl(var(--primary));
+}
+
+button {
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+
+input, select, textarea {
+  font-family: var(--font-sans);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--input));
+  color: hsl(var(--foreground));
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.25);
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-mono);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+th {
+  background: hsl(var(--muted) / 0.5);
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+  font-size: 0.875rem;
+  color: hsl(var(--foreground));
+}
+
+tr:hover td {
+  background: hsl(var(--accent) / 0.6);
+}
+
+/* Global focus visibility (quality floor) */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.25);
+}
+
+/* ==========================================================================
+   SURFACES — legacy utility names restyled onto tokens
+   ========================================================================== */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: hsl(var(--card) / 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid hsl(var(--border));
+}
+
+html.light .glass-panel {
+  background: hsl(var(--card) / 0.85);
+}
+
+.glass-panel-elevated {
+  background: hsl(var(--popover));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 12px 40px -12px hsl(var(--background) / 0.8);
 }
 
 .glass-card {
-  background: rgba(19, 29, 51, 0.6);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: hsl(var(--card));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.glow-brand {
-  box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.3);
+.glass-card:hover {
+  border-color: hsl(var(--primary) / 0.35);
 }
 
-.glow-emerald {
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+html.light .glass-card {
+  background: hsl(var(--card));
+  box-shadow: 0 1px 3px hsl(var(--background) / 0.06);
 }
 
-.glow-amber {
-  box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.25);
+html.light .glass-card:hover {
+  box-shadow: 0 4px 16px hsl(var(--primary) / 0.1);
 }
 
-.glow-red {
-  box-shadow: 0 0 25px -5px rgba(239, 68, 68, 0.3);
+/* Signature: the gate rail — a left rule whose color encodes gate state */
+.gate-rail {
+  position: relative;
+}
+.gate-rail::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--gate-color, var(--primary))),
+    hsl(var(--gate-color, var(--primary)) / 0.15)
+  );
 }
 
-/* Custom scrollbar */
+.gate-sealed  { --gate-color: var(--success); }
+.gate-review  { --gate-color: var(--warning); }
+.gate-halted  { --gate-color: var(--destructive); }
+.gate-telemetry { --gate-color: var(--signal-telemetry); }
+.gate-brand   { --gate-color: var(--primary); }
+
+/* Glow Utilities */
+.glow-brand { box-shadow: 0 0 30px -8px hsl(var(--primary) / 0.35); }
+.glow-cyan { box-shadow: 0 0 30px -8px hsl(var(--signal-telemetry) / 0.35); }
+.glow-emerald { box-shadow: 0 0 30px -8px hsl(var(--success) / 0.35); }
+.glow-amber { box-shadow: 0 0 30px -8px hsl(var(--warning) / 0.35); }
+.glow-red { box-shadow: 0 0 30px -8px hsl(var(--destructive) / 0.35); }
+
+/* Inverted surfaces (bg-foreground strips): headings must pick up text-background,
+   because the base h1–h6 rule above forces text-foreground with !important */
+.invert-headings h1, .invert-headings h2, .invert-headings h3,
+.invert-headings h4, .invert-headings h5, .invert-headings h6 {
+  color: hsl(var(--background)) !important;
+}
+
+/* Keyframe Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fadeIn { animation: fadeIn 0.2s ease-out forwards; }
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slideLeft { animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-scaleIn { animation: scaleIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slideDown { animation: slideDown 0.2s ease-out forwards; }
+
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #090D16;
+  background: hsl(var(--background));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1E293B;
-  border-radius: 3px;
+  background: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* ==========================================================================
+   LIGHT THEME OVERRIDES — catches dark utilities hardcoded across pages
+   ========================================================================== */
+html.light .text-white { color: hsl(222 47% 11%) !important; }
+
+/* Restore white text on saturated/colored backgrounds (buttons, chat bubbles,
+   status banners) — the blanket override above is only meant for neutral surfaces. */
+html.light :is([class*="bg-indigo-"], [class*="bg-emerald-"], [class*="bg-purple-"], [class*="bg-amber-"], [class*="bg-red-"], [class*="bg-rose-"], [class*="bg-cyan-"], [class*="bg-teal-"], [class*="bg-blue-"], [class*="bg-violet-"], [class*="bg-fuchsia-"], [class*="bg-pink-"], [class*="bg-orange-"], [class*="bg-sky-"], [class*="bg-lime-"], [class*="bg-green-"], [class*="bg-primary"], [class*="bg-success"], [class*="bg-destructive"], [class*="bg-warning"], [class*="bg-gradient-to-"]) .text-white,
+html.light :is([class*="bg-indigo-"], [class*="bg-emerald-"], [class*="bg-purple-"], [class*="bg-amber-"], [class*="bg-red-"], [class*="bg-rose-"], [class*="bg-cyan-"], [class*="bg-teal-"], [class*="bg-blue-"], [class*="bg-violet-"], [class*="bg-fuchsia-"], [class*="bg-pink-"], [class*="bg-orange-"], [class*="bg-sky-"], [class*="bg-lime-"], [class*="bg-green-"], [class*="bg-primary"], [class*="bg-success"], [class*="bg-destructive"], [class*="bg-warning"], [class*="bg-gradient-to-"]).text-white {
+  color: #ffffff !important;
+}
+
+/* 900-series tint washes turn near-white in light mode — their text must stay dark */
+html.light :is([class*="bg-indigo-9"], [class*="bg-emerald-9"], [class*="bg-red-9"], [class*="bg-rose-9"], [class*="bg-amber-9"], [class*="bg-orange-9"], [class*="bg-teal-9"], [class*="bg-cyan-9"], [class*="bg-violet-9"], [class*="bg-purple-9"], [class*="bg-blue-9"], [class*="bg-sky-9"], [class*="bg-slate-9"]) .text-white,
+html.light :is([class*="bg-indigo-9"], [class*="bg-emerald-9"], [class*="bg-red-9"], [class*="bg-rose-9"], [class*="bg-amber-9"], [class*="bg-orange-9"], [class*="bg-teal-9"], [class*="bg-cyan-9"], [class*="bg-violet-9"], [class*="bg-purple-9"], [class*="bg-blue-9"], [class*="bg-sky-9"], [class*="bg-slate-9"]).text-white {
+  color: hsl(222 47% 11%) !important;
+}
+html.light .text-slate-100 { color: hsl(222 47% 13%) !important; }
+html.light .text-slate-200 { color: hsl(222 44% 17%) !important; }
+html.light .text-slate-300 { color: hsl(222 40% 24%) !important; }
+html.light .text-slate-400 { color: hsl(215 20% 38%) !important; }
+html.light .text-slate-500 { color: hsl(215 16% 46%) !important; }
+
+html.light .bg-background { background-color: hsl(220 38% 97%) !important; }
+html.light .bg-surface { background-color: hsl(0 0% 100%) !important; }
+html.light .bg-surface\/50 { background-color: hsl(0 0% 100% / 0.5) !important; }
+html.light .bg-surface\/80 { background-color: hsl(220 30% 96% / 0.8) !important; }
+html.light .bg-surface\/90 { background-color: hsl(0 0% 100% / 0.9) !important; }
+html.light .bg-surface\/95 { background-color: hsl(0 0% 100% / 0.95) !important; }
+html.light .bg-slate-800 { background-color: hsl(218 25% 90%) !important; }
+html.light .bg-slate-900 { background-color: hsl(220 25% 95%) !important; }
+html.light .bg-slate-900\/80 { background-color: hsl(220 25% 95% / 0.8) !important; }
+html.light .bg-slate-900\/85 { background-color: hsl(220 25% 95% / 0.85) !important; }
+html.light .bg-slate-900\/90 { background-color: hsl(220 25% 95% / 0.9) !important; }
+html.light .bg-slate-950\/60 { background-color: hsl(220 38% 97% / 0.6) !important; }
+html.light .bg-slate-950\/80 { background-color: hsl(0 0% 100% / 0.85) !important; }
+html.light .bg-black\/60 { background-color: hsl(222 47% 11% / 0.3) !important; }
+html.light .bg-black\/50 { background-color: hsl(222 47% 11% / 0.2) !important; }
+
+html.light .border-white\/10 { border-color: hsl(219 22% 86%) !important; }
+html.light .border-white\/5 { border-color: hsl(219 22% 90%) !important; }
+html.light .border-white\/20 { border-color: hsl(219 22% 80%) !important; }
+html.light .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: hsl(219 22% 90%) !important; }
+
+html.light .hover\:bg-white\/5:hover { background-color: hsl(217 85% 48% / 0.06) !important; }
+html.light .hover\:bg-white\/10:hover { background-color: hsl(217 85% 48% / 0.08) !important; }
+html.light .bg-white\/5 { background-color: hsl(217 85% 48% / 0.04) !important; }
+html.light .bg-white\/10 { background-color: hsl(217 85% 48% / 0.06) !important; }
+
+html.light .bg-indigo-600\/20 { background-color: hsl(217 85% 48% / 0.12) !important; }
+html.light .bg-indigo-600\/30 { background-color: hsl(217 85% 48% / 0.15) !important; }
+html.light .bg-indigo-500\/20 { background-color: hsl(217 85% 48% / 0.1) !important; }
+html.light .bg-indigo-950\/30 { background-color: hsl(219 100% 97%) !important; }
+html.light .bg-indigo-950\/40 { background-color: hsl(219 100% 96%) !important; }
+html.light .text-indigo-200 { color: hsl(230 60% 42%) !important; }
+html.light .text-indigo-100 { color: hsl(230 60% 42%) !important; }
+
+html.light .bg-emerald-950\/10 { background-color: hsl(160 84% 96%) !important; }
+html.light .bg-emerald-500\/20 { background-color: hsl(160 84% 39% / 0.12) !important; }
+
+html.light .bg-red-950\/40 { background-color: hsl(0 86% 97%) !important; }
+html.light .text-red-300 { color: hsl(0 74% 46%) !important; }
+
+html.light .bg-amber-950\/80 { background-color: hsl(48 100% 96%) !important; }
+html.light .text-amber-300 { color: hsl(32 92% 40%) !important; }
+
+html.light .glass-panel-elevated {
+  background: hsl(0 0% 100%);
+  box-shadow: 0 4px 20px -5px hsl(222 47% 11% / 0.08);
+}
+
+html.light .glow-brand { box-shadow: 0 2px 12px -2px hsl(217 85% 48% / 0.15); }
+html.light .glow-cyan { box-shadow: 0 2px 12px -2px hsl(192 90% 34% / 0.12); }
+html.light .glow-emerald { box-shadow: 0 2px 12px -2px hsl(158 66% 34% / 0.12); }
+html.light .glow-amber { box-shadow: 0 2px 12px -2px hsl(32 92% 40% / 0.12); }
+
+html.light ::-webkit-scrollbar-track { background: hsl(220 38% 97%); }
+html.light ::-webkit-scrollbar-thumb { background: hsl(219 22% 70%); }
+html.light ::-webkit-scrollbar-thumb:hover { background: hsl(219 22% 55%); }
+
+html.light input, html.light select, html.light textarea {
+  background: hsl(0 0% 100%);
+  border-color: hsl(219 22% 84%);
+  color: hsl(222 47% 11%);
+}
+
+html.light footer { background: hsl(220 30% 96% / 0.5) !important; border-color: hsl(219 22% 90%) !important; }
+
+/* ==========================================================================
+   TYPING INDICATOR
+   ========================================================================== */
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-5px); }
+}
+
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  animation: typingBounce 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* ==========================================================================
+   TOAST NOTIFICATION
+   ========================================================================== */
+@keyframes toastSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toastSlideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+.toast-enter { animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.toast-exit { animation: toastSlideOut 0.2s ease-in forwards; }
+
+/* ==========================================================================
+   MOTION & RESPONSIVE
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  body { overflow-x: hidden; }
+  .max-w-7xl { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
 }

@@ -20,7 +20,9 @@ export class ProofEngine {
     }
 
     const record = obj as Record<string, unknown>;
-    const sortedKeys = Object.keys(record).sort();
+    const sortedKeys = Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort();
 
     return (
       '{' +

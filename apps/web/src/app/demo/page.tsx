@@ -15,30 +15,51 @@ import {
   Lock, 
   TrendingUp, 
   FileCheck2,
-  Play
+  Play,
+  Activity,
+  Layers,
+  Check
 } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 
 export default function DemoHubPage() {
   const [runningDemo, setRunningDemo] = useState<number | null>(null);
   const [demoResults, setDemoResults] = useState<Record<number, any>>({});
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState<number>(0);
 
   const handleResetEnvironment = async () => {
     try {
       const res = await fetchApi<any>('/api/demo/reset', { method: 'POST' });
       setResetMessage(res.message || 'Demo environment reset to standard baseline.');
       setDemoResults({});
+      setCurrentStep(0);
       setTimeout(() => setResetMessage(null), 4000);
     } catch (err: any) {
-      alert(`Reset error: ${err.message}`);
+      setResetMessage(`Reset error: ${err?.message || 'Failed to reset'}`);
     }
   };
+
+  const stepsList = [
+    { title: 'Customer Action', desc: 'Intent formulated by Agent' },
+    { title: 'Realtime Telemetry', desc: 'Event dispatched to Bus' },
+    { title: 'AI Analysis', desc: 'Elasticity & Risk modeled' },
+    { title: 'Policy Validation', desc: '12 deterministic gates' },
+    { title: 'Bounded Action', desc: 'Razorpay Test execution' },
+    { title: 'SHA-256 Proof', desc: 'Sealed in tamper-evident chain' }
+  ];
 
   // Demo 1: Successful Agentic Purchase
   const runDemo1 = async () => {
     setRunningDemo(1);
+    setCurrentStep(1);
     try {
+      await new Promise(r => setTimeout(r, 400));
+      setCurrentStep(2);
+
       // 1. Create mandate
       const mandate = await fetchApi<any>('/api/mandates', {
         method: 'POST',
@@ -49,6 +70,9 @@ export default function DemoHubPage() {
           allowedCategories: ['keyboard', 'accessories']
         })
       });
+
+      setCurrentStep(3);
+      await new Promise(r => setTimeout(r, 400));
 
       // 2. Authorize
       const auth = await fetchApi<any>('/api/payments/create', {
@@ -62,6 +86,10 @@ export default function DemoHubPage() {
         })
       });
 
+      setCurrentStep(4);
+      await new Promise(r => setTimeout(r, 400));
+      setCurrentStep(5);
+
       // 3. Verify Payment
       const payment = await fetchApi<any>('/api/payments/verify', {
         method: 'POST',
@@ -72,6 +100,8 @@ export default function DemoHubPage() {
           razorpaySignature: auth.testCredentials.signature
         })
       });
+
+      setCurrentStep(6);
 
       setDemoResults(prev => ({
         ...prev,
@@ -92,9 +122,15 @@ export default function DemoHubPage() {
   // Demo 2: Signature Price-Drift Protection
   const runDemo2 = async () => {
     setRunningDemo(2);
+    setCurrentStep(1);
     try {
+      await new Promise(r => setTimeout(r, 400));
+      setCurrentStep(2);
+
       // 1. Trigger price drift on merchant catalog
       const drift = await fetchApi<any>('/api/demo/price-drift', { method: 'POST' });
+
+      setCurrentStep(3);
 
       // 2. Create mandate max 2500
       const mandate = await fetchApi<any>('/api/mandates', {
@@ -106,6 +142,8 @@ export default function DemoHubPage() {
           allowedCategories: ['keyboard']
         })
       });
+
+      setCurrentStep(4);
 
       // 3. Attempt payment expecting original price 2199 when live catalog is now 2799
       let blockedResponse = null;
@@ -122,6 +160,8 @@ export default function DemoHubPage() {
       } catch (err: any) {
         blockedResponse = err.data || { message: err.message };
       }
+
+      setCurrentStep(6);
 
       setDemoResults(prev => ({
         ...prev,
@@ -142,6 +182,7 @@ export default function DemoHubPage() {
   // Demo 3: Payment Failure Simulation
   const runDemo3 = async () => {
     setRunningDemo(3);
+    setCurrentStep(1);
     try {
       const mandate = await fetchApi<any>('/api/mandates', {
         method: 'POST',
@@ -152,6 +193,8 @@ export default function DemoHubPage() {
         })
       });
 
+      setCurrentStep(3);
+
       const auth = await fetchApi<any>('/api/payments/create', {
         method: 'POST',
         body: JSON.stringify({
@@ -161,6 +204,8 @@ export default function DemoHubPage() {
           quantity: 1
         })
       });
+
+      setCurrentStep(5);
 
       // Simulate payment failure
       let failRes = null;
@@ -177,6 +222,8 @@ export default function DemoHubPage() {
       } catch (err: any) {
         failRes = err.data || { message: err.message };
       }
+
+      setCurrentStep(6);
 
       setDemoResults(prev => ({
         ...prev,
@@ -196,14 +243,21 @@ export default function DemoHubPage() {
   // Demo 4: Growth Agent Opportunity & Approval
   const runDemo4 = async () => {
     setRunningDemo(4);
+    setCurrentStep(1);
     try {
       const recs = await fetchApi<any[]>('/api/growth/recommendations');
       const crossSell = recs.find(r => r.type === 'CROSS_SELL') || recs[0];
+
+      setCurrentStep(3);
+      await new Promise(r => setTimeout(r, 400));
+      setCurrentStep(5);
 
       // Approve it
       const approval = await fetchApi<any>(`/api/growth/recommendations/${crossSell.id}/approve`, {
         method: 'POST'
       });
+
+      setCurrentStep(6);
 
       setDemoResults(prev => ({
         ...prev,
@@ -223,19 +277,26 @@ export default function DemoHubPage() {
   // Demo 5: SHA-256 Proof Verification
   const runDemo5 = async () => {
     setRunningDemo(5);
+    setCurrentStep(1);
     try {
       const orders = await fetchApi<any[]>('/api/orders');
       const paidOrder = orders.find(o => o.status === 'PAID') || orders[0];
+
+      setCurrentStep(3);
 
       const validVerification = await fetchApi<any>(`/api/proofs/${paidOrder.id}/verify`, {
         method: 'POST',
         body: JSON.stringify({ simulateTamper: false })
       });
 
+      setCurrentStep(5);
+
       const tamperedVerification = await fetchApi<any>(`/api/proofs/${paidOrder.id}/verify`, {
         method: 'POST',
         body: JSON.stringify({ simulateTamper: true })
       });
+
+      setCurrentStep(6);
 
       setDemoResults(prev => ({
         ...prev,
@@ -265,7 +326,7 @@ export default function DemoHubPage() {
             <div className="flex items-center space-x-2">
               <h1 className="text-2xl font-extrabold text-white">Hackathon Demo Command Center</h1>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/40">
-                5 GUIDED DEMOS
+                5 GUIDED SCENARIOS
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
@@ -289,6 +350,50 @@ export default function DemoHubPage() {
           <span>{resetMessage}</span>
         </div>
       )}
+
+      {/* Live Pipeline Step Visualizer */}
+      <Card className="p-5 border-indigo-500/30 bg-slate-950/80">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <Activity className="w-4 h-4 text-brand-accent" />
+            <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+              Live Closed-Loop Telemetry Pipeline
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400">
+            {runningDemo ? `Executing Scenario #${runningDemo}` : 'Idle · Select a Scenario'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs font-mono">
+          {stepsList.map((step, idx) => {
+            const stepNum = idx + 1;
+            const isCompleted = currentStep > stepNum;
+            const isCurrent = currentStep === stepNum;
+
+            return (
+              <div
+                key={idx}
+                className={`p-3 rounded-xl border transition-all flex flex-col justify-between ${
+                  isCurrent
+                    ? 'bg-indigo-600/30 border-indigo-500 text-white shadow-lg glow-brand scale-102'
+                    : isCompleted
+                    ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+                    : 'bg-surface/50 border-white/5 text-slate-500'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[10px] font-bold">
+                  <span>STEP 0{stepNum}</span>
+                  {isCompleted && <Check className="w-3 h-3 text-emerald-400" />}
+                  {isCurrent && <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />}
+                </div>
+                <div className="font-bold text-[11px] mt-1 text-white truncate">{step.title}</div>
+                <div className="text-[9px] text-slate-400 font-sans mt-0.5 leading-tight">{step.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
       {/* 5 Demo Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

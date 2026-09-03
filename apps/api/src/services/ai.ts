@@ -26,7 +26,7 @@ export class AIService {
    * Parses natural language buyer prompt into structured intent with Zod validation
    * Falls back gracefully to deterministic keyword extraction if offline or unconfigured.
    */
-  public async parseBuyerIntent(message: string): Promise<BuyerIntent> {
+  public async parseBuyerIntent(message: string, context?: any): Promise<BuyerIntent> {
     if (this.openai) {
       try {
         const response = await this.openai.chat.completions.create({
@@ -35,12 +35,16 @@ export class AIService {
             {
               role: 'system',
               content: `You are the RACE Bounded-Autonomy Buyer Agent parser.
-Extract structured commerce intent as valid JSON with fields:
-- category: string (e.g. "keyboard", "mouse", "audio", "accessories")
+Analyze the user's shopping message and classify into structured JSON:
+- intentType: "GREETING" | "SMALL_TALK" | "PRODUCT_SEARCH" | "PRODUCT_RECOMMENDATION" | "PRODUCT_DETAILS" | "PRODUCT_COMPARISON" | "PRICE_QUERY" | "BUDGET_QUERY" | "DISCOUNT_QUERY" | "INVENTORY_QUERY" | "CART_VIEW" | "CART_ADD" | "CART_REMOVE" | "CART_UPDATE" | "CHECKOUT_REQUEST" | "PURCHASE_REQUEST" | "ORDER_STATUS" | "HELP" | "UNKNOWN"
+- category: string or null ("keyboard", "mouse", "audio", "accessories")
 - maxBudget: number or null (in INR)
 - currency: "INR"
-- action: "search" | "compare" | "purchase" | "inquire"
-- tool: "catalog.search" | "catalog.compare" | "commerce.checkout"
+- action: "search" | "compare" | "purchase" | "inquire" | "cart" | "chat"
+- tool: "catalog.search" | "catalog.compare" | "catalog.details" | "cart.add" | "cart.remove" | "cart.view" | "commerce.checkout" | "mandate.check"
+- targetProductIndex: 0-based number if user says "first one", "second one", etc.
+- quantity: number or 1
+- useCase: "gaming" | "office" | "programming" | "general"
 - preferences: array of strings
 
 Respond with JSON only.`
@@ -61,12 +65,16 @@ Respond with JSON only.`
         if (validated.success) {
           return {
             rawQuery: message,
+            intentType: validated.data.intentType,
             category: validated.data.category,
             maxBudget: validated.data.maxBudget,
             currency: validated.data.currency || 'INR',
             action: validated.data.action,
             tool: validated.data.tool || (validated.data.action === 'purchase' ? 'commerce.checkout' : 'catalog.search'),
-            preferences: validated.data.preferences
+            preferences: validated.data.preferences,
+            targetProductIndex: validated.data.targetProductIndex,
+            quantity: validated.data.quantity,
+            useCase: validated.data.useCase
           };
         }
       } catch (err: any) {
@@ -74,8 +82,8 @@ Respond with JSON only.`
       }
     }
 
-    // Deterministic Fallback Parser
-    return BuyerAgent.parseIntent(message);
+    // Deterministic Fallback Parser with session context
+    return BuyerAgent.parseIntent(message, context);
   }
 }
 

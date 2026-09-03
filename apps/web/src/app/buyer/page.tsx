@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Bot,
   Send,
@@ -13,21 +15,46 @@ import {
   CreditCard,
   RefreshCw,
   Clock,
-  Layers
+  Layers,
+  Search,
+  ShoppingCart,
+  Check,
+  Star,
+  ThumbsUp,
+  Tag,
+  Zap,
+  Info,
+  Sliders,
+  Scale,
+  ChevronRight,
+  ExternalLink,
+  ShieldAlert,
+  HelpCircle,
+  Plus,
+  Minus,
+  Trash2,
+  MessageSquare
 } from 'lucide-react';
 import {
   ProductDto,
+  ProductMatchDto,
   MandateDto,
   BuyerAgentMessageResponse
 } from '@race/types';
 import { fetchApi } from '../../lib/api';
+import { realtimeBus } from '../../lib/realtime';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import { useCart } from '../../context/CartContext';
 
 type CheckoutStep =
   | 'idle'
   | 'authorizing'
   | 'ready_to_pay'
   | 'paid'
-  | 'blocked';
+  | 'blocked'
+  | 'failed';
 
 type ReceiptData = {
   success?: boolean;
@@ -39,15 +66,8 @@ type ReceiptData = {
   status?: string;
   message?: string;
   isDuplicate?: boolean;
-
-  order?: {
-    id?: string;
-  };
-
-  receipt?: {
-    razorpayPaymentId?: string;
-  };
-
+  order?: { id?: string };
+  receipt?: { razorpayPaymentId?: string };
   proof?: {
     id?: string;
     decisionHash?: string;
@@ -61,19 +81,50 @@ type ProofVerificationResult = {
   orderId: string;
   decisionHash: string;
   transactionHash: string;
-
   checks?: {
     decisionHashMatches?: boolean;
     transactionHashMatches?: boolean;
     auditHashChainValid?: boolean;
     eventsVerifiedCount?: number;
   };
-
   integrityStatus?: string;
   details?: string;
 };
 
+// Curated high quality product assets for all 26 catalog items
+const PRODUCT_IMAGES: Record<string, string> = {
+  'prod_keyboard_01': 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=600&q=80',
+  'prod_keyboard_pro_05': 'https://images.unsplash.com/photo-1618384887929-16ec33fab9ef?auto=format&fit=crop&w=600&q=80',
+  'prod_keyboard_compact_06': 'https://images.unsplash.com/photo-1595225476474-87563907a212?auto=format&fit=crop&w=600&q=80',
+  'prod_keyboard_slim_07': 'https://images.unsplash.com/photo-1560762484-813fc97650a0?auto=format&fit=crop&w=600&q=80',
+  'prod_keyboard_ergo_08': 'https://images.unsplash.com/photo-1511467687858-23d96c32e4ae?auto=format&fit=crop&w=600&q=80',
+  'prod_mouse_02': 'https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?auto=format&fit=crop&w=600&q=80',
+  'prod_mouse_ergo_09': 'https://images.unsplash.com/photo-1605773527852-c546a8584ea3?auto=format&fit=crop&w=600&q=80',
+  'prod_mouse_gaming_10': 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?auto=format&fit=crop&w=600&q=80',
+  'prod_mouse_silent_11': 'https://images.unsplash.com/photo-1629429408209-1f912961dbd8?auto=format&fit=crop&w=600&q=80',
+  'prod_mouse_trackball_12': 'https://images.unsplash.com/photo-1600003014755-ba31aa59c4b6?auto=format&fit=crop&w=600&q=80',
+  'prod_audio_anc_13': 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80',
+  'prod_audio_studio_14': 'https://images.unsplash.com/photo-1583394838336-acd977736f90?auto=format&fit=crop&w=600&q=80',
+  'prod_audio_headset_15': 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=600&q=80',
+  'prod_audio_gaming_16': 'https://images.unsplash.com/photo-1599669454699-248893623440?auto=format&fit=crop&w=600&q=80',
+  'prod_cam_1080p_17': 'https://images.unsplash.com/photo-1588702547919-26089e690ecc?auto=format&fit=crop&w=600&q=80',
+  'prod_cam_4k_18': 'https://images.unsplash.com/photo-1588702547923-7093a6c3ba33?auto=format&fit=crop&w=600&q=80',
+  'prod_cam_privacy_19': 'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?auto=format&fit=crop&w=600&q=80',
+  'prod_hub_03': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=600&q=80',
+  'prod_dock_20': 'https://images.unsplash.com/photo-1616440347437-b1c73416efc2?auto=format&fit=crop&w=600&q=80',
+  'prod_stand_21': 'https://images.unsplash.com/photo-1616353071588-708dcff912e2?auto=format&fit=crop&w=600&q=80',
+  'prod_wristrest_04': 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?auto=format&fit=crop&w=600&q=80',
+  'prod_charger_22': 'https://images.unsplash.com/photo-1622445262464-84b14e3235b3?auto=format&fit=crop&w=600&q=80',
+  'prod_deskmat_23': 'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?auto=format&fit=crop&w=600&q=80',
+  'prod_lightbar_24': 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=600&q=80',
+  'prod_monitor_25': 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=600&q=80',
+  'prod_monitor_arm_26': 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=600&q=80',
+  'default': 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80'
+};
+
 export default function BuyerPage() {
+  const router = useRouter();
+  const { items: cartItems, addToCart, removeFromCart, updateQuantity, setIsCartOpen, setToastMessage } = useCart();
   const [messages, setMessages] = useState<
     Array<{
       sender: 'user' | 'agent';
@@ -83,116 +134,130 @@ export default function BuyerPage() {
   >([
     {
       sender: 'agent',
-      text:
-        'Hello! I am your autonomous Buyer Agent. Tell me what you are looking for, and I will search the agentic catalog, compare specifications, and safely prepare a bounded checkout.'
+      text: 'Hello! 👋 I am your **RACE AI Shopping Copilot**. Ask me to discover gear (*"wireless keyboard under ₹2500"*), compare options (*"compare top mice"*), or manage your cart (*"what is in my cart"*). I ensure all recommendations fit your policy and authorized spending bounds.'
     }
   ]);
 
-  const [input, setInput] = useState(
-    'Find me a mechanical keyboard under ₹2500'
-  );
-
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const [activeMandate, setActiveMandate] =
-    useState<MandateDto | null>(null);
-
-  const [selectedProduct, setSelectedProduct] =
-    useState<ProductDto | null>(null);
-
-  const [checkoutStep, setCheckoutStep] =
-    useState<CheckoutStep>('idle');
-
-  const [authDetails, setAuthDetails] =
-    useState<any>(null);
-
-  const [blockError, setBlockError] =
-    useState<any>(null);
-
-  const [receiptData, setReceiptData] =
-    useState<ReceiptData | null>(null);
-
-  const [verifyingProof, setVerifyingProof] =
-    useState(false);
-
-  const [proofVerified, setProofVerified] =
-    useState<ProofVerificationResult | null>(null);
+  const [loadingStateText, setLoadingStateText] = useState('Thinking...');
+  const [activeMandate, setActiveMandate] = useState<MandateDto | null>(null);
+  const [catalogProducts, setCatalogProducts] = useState<ProductDto[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<ProductDto | null>(null);
+  const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>('idle');
+  const [authDetails, setAuthDetails] = useState<any>(null);
+  const [blockError, setBlockError] = useState<any>(null);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [verifyingProof, setVerifyingProof] = useState(false);
+  const [proofVerified, setProofVerified] = useState<ProofVerificationResult | null>(null);
+  const [activeTab, setActiveTab] = useState<'storefront' | 'copilot' | 'compare'>('copilot');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [lastShownProductIds, setLastShownProductIds] = useState<string[]>([]);
+  const [isEditingMandate, setIsEditingMandate] = useState(false);
+  const [customMandateCap, setCustomMandateCap] = useState(25000);
 
   useEffect(() => {
-    async function initMandate() {
+    async function init() {
       try {
-        const mandate = await fetchApi<MandateDto>(
-          '/api/mandates',
-          {
+        // 1. Fetch or create active mandate
+        let mandate: MandateDto;
+        try {
+          mandate = await fetchApi<MandateDto>('/api/mandates/active');
+        } catch {
+          mandate = await fetchApi<MandateDto>('/api/mandates', {
             method: 'POST',
             body: JSON.stringify({
               userId: 'usr_buyer_001',
-              maxAmount: 2500,
+              maxAmount: 25000,
               currency: 'INR',
-              allowedCategories: [
-                'keyboard',
-                'accessories'
-              ],
-              allowedActions: [
-                'search',
-                'compare',
-                'purchase'
-              ]
+              allowedCategories: ['keyboard', 'mouse', 'audio', 'webcam', 'accessories', 'monitors'],
+              allowedActions: ['search', 'compare', 'purchase']
             })
-          }
-        );
-
+          });
+        }
         setActiveMandate(mandate);
+        setCustomMandateCap(mandate.maxAmount);
+
+        // 2. Fetch full catalog
+        const res = await fetchApi<any>('/api/agents/buyer/search', {
+          method: 'POST',
+          body: JSON.stringify({ query: '' })
+        });
+        if (res.products && res.products.length > 0) {
+          setCatalogProducts(res.products);
+          setSelectedProduct(res.products[0]);
+          setLastShownProductIds(res.products.map((p: any) => p.id));
+        }
       } catch (err) {
-        console.error(
-          'Error creating default mandate:',
-          err
-        );
+        console.error('Error initializing buyer state:', err);
       }
     }
-
-    initMandate();
+    init();
   }, []);
 
-  const handleSendMessage = async (
-    customQuery?: string
-  ) => {
-    const queryText = customQuery || input;
+  const handleSendMessage = async (customQuery?: string) => {
+    const queryText = (customQuery || input).trim();
+    if (!queryText || loading) return;
 
-    if (!queryText.trim() || loading) {
-      return;
-    }
-
-    const newMessages = [
-      ...messages,
-      {
-        sender: 'user' as const,
-        text: queryText
-      }
-    ];
-
+    const newMessages = [...messages, { sender: 'user' as const, text: queryText }];
     setMessages(newMessages);
     setInput('');
     setLoading(true);
-    setSelectedProduct(null);
+    setLoadingStateText(
+      queryText.toLowerCase().includes('compare')
+        ? 'Comparing technical specifications...'
+        : queryText.toLowerCase().includes('cart')
+        ? 'Inspecting shopping cart state...'
+        : 'Searching verified product catalog...'
+    );
     setCheckoutStep('idle');
     setAuthDetails(null);
     setBlockError(null);
     setReceiptData(null);
     setProofVerified(null);
 
+    // Broadcast user search event to realtime stream
+    realtimeBus.publish({
+      eventType: 'USER_SEARCH',
+      actorName: 'Aarav Sharma',
+      actorRole: 'CUSTOMER',
+      description: `Queried shopping assistant: "${queryText}"`,
+      badgeType: 'info'
+    });
+
     try {
-      const response =
-        await fetchApi<BuyerAgentMessageResponse>(
-          '/api/agents/buyer/message',
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              message: queryText,
-              mandateId: activeMandate?.id
-            })
+      const response = await fetchApi<BuyerAgentMessageResponse>('/api/agents/buyer/message', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: queryText,
+          mandateId: activeMandate?.id,
+          lastShownProductIds,
+          selectedProductId: selectedProduct?.id,
+          cartItems: cartItems.map(i => ({
+            productId: i.product.id,
+            productName: i.product.name,
+            price: i.product.price,
+            quantity: i.quantity
+          }))
+        })
+      });
+
+      // Execute AI Cart Action if returned
+      if (response.cartAction) {
+        if (response.cartAction.type === 'ADD_TO_CART' && response.cartAction.productId) {
+          const prodToAdd = catalogProducts.find(p => p.id === response.cartAction?.productId);
+          if (prodToAdd) {
+            addToCart(prodToAdd, response.cartAction.quantity || 1);
+            setToastMessage(`✓ Added ${prodToAdd.name} to cart`);
+            setIsCartOpen(true);
           }
-        );
+        } else if (response.cartAction.type === 'REMOVE_FROM_CART' && response.cartAction.productId) {
+          removeFromCart(response.cartAction.productId);
+          setToastMessage('Item removed from cart');
+        } else if (response.cartAction.type === 'UPDATE_QUANTITY' && response.cartAction.productId) {
+          updateQuantity(response.cartAction.productId, response.cartAction.quantity || 1);
+        }
+      }
 
       setMessages([
         ...newMessages,
@@ -203,22 +268,16 @@ export default function BuyerPage() {
         }
       ]);
 
-      if (
-        response.products &&
-        response.products.length > 0
-      ) {
-        setSelectedProduct(
-          response.products[0]
-        );
+      if (response.products && response.products.length > 0) {
+        setSelectedProduct(response.products[0]);
+        setLastShownProductIds(response.products.map(p => p.id));
       }
     } catch (err: any) {
       setMessages([
         ...newMessages,
         {
           sender: 'agent',
-          text:
-            `⚠️ Agent processing error: ${err?.message || 'Unknown error'
-            }`
+          text: `⚠️ Agent processing error: ${err?.message || 'Unable to connect to AI engine'}`
         }
       ]);
     } finally {
@@ -226,1306 +285,558 @@ export default function BuyerPage() {
     }
   };
 
-  const loadRazorpayScript =
-    (): Promise<boolean> => {
-      return new Promise((resolve) => {
-        if (
-          typeof window !== 'undefined' &&
-          (window as any).Razorpay
-        ) {
-          resolve(true);
-          return;
-        }
+  const handleSelectProduct = (prod: ProductDto) => {
+    setSelectedProduct(prod);
+    setCheckoutStep('idle');
+    setAuthDetails(null);
+    setBlockError(null);
 
-        const existingScript =
-          document.querySelector(
-            'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
-          );
-
-        if (existingScript) {
-          existingScript.addEventListener(
-            'load',
-            () => resolve(true)
-          );
-
-          existingScript.addEventListener(
-            'error',
-            () => resolve(false)
-          );
-
-          return;
-        }
-
-        const script =
-          document.createElement('script');
-
-        script.src =
-          'https://checkout.razorpay.com/v1/checkout.js';
-
-        script.async = true;
-
-        script.onload = () =>
-          resolve(true);
-
-        script.onerror = () =>
-          resolve(false);
-
-        document.body.appendChild(script);
-      });
-    };
-
-  const savePaymentVerification = (
-    verifyResult: any
-  ) => {
-    /*
-     * IMPORTANT:
-     *
-     * /api/payments/verify returns:
-     *
-     * {
-     *   orderId,
-     *   paymentId,
-     *   razorpayPaymentId,
-     *   amount,
-     *   currency,
-     *   status,
-     *   proof
-     * }
-     *
-     * It does NOT necessarily return:
-     *
-     * {
-     *   order: {},
-     *   receipt: {}
-     * }
-     *
-     * Normalize everything here so the rest of the
-     * UI always works with one predictable structure.
-     */
-
-    const normalized: ReceiptData = {
-      ...verifyResult,
-
-      orderId:
-        verifyResult?.orderId ||
-        verifyResult?.order?.id,
-
-      razorpayPaymentId:
-        verifyResult?.razorpayPaymentId ||
-        verifyResult?.receipt
-          ?.razorpayPaymentId ||
-        verifyResult?.paymentId,
-
-      proof:
-        verifyResult?.proof || null
-    };
-
-    setReceiptData(normalized);
-    setProofVerified(null);
-    setCheckoutStep('paid');
+    realtimeBus.publish({
+      eventType: 'USER_VIEW',
+      actorName: 'Aarav Sharma',
+      actorRole: 'CUSTOMER',
+      description: `Selected ${prod.name} (₹${prod.price.toLocaleString('en-IN')})`,
+      badgeType: 'info'
+    });
   };
 
-  const handleInitiateCheckout =
-    async (product: ProductDto) => {
-      if (!activeMandate) {
-        alert(
-          'Active intent mandate is not available.'
-        );
-        return;
-      }
+  const handleBuyNow = (prod: ProductDto) => {
+    addToCart(prod, 1);
+    setSelectedProduct(prod);
+    setToastMessage(`Proceeding to checkout with ${prod.name}`);
+    router.push('/buyer/cart');
+  };
 
-      setCheckoutStep('authorizing');
-      setBlockError(null);
-      setReceiptData(null);
-      setProofVerified(null);
+  const handleUpdateMandate = async () => {
+    try {
+      const updated = await fetchApi<MandateDto>('/api/mandates', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: 'usr_buyer_001',
+          maxAmount: customMandateCap,
+          currency: 'INR',
+          allowedCategories: ['keyboard', 'mouse', 'audio', 'webcam', 'accessories', 'monitors'],
+          allowedActions: ['search', 'compare', 'purchase']
+        })
+      });
+      setActiveMandate(updated);
+      setIsEditingMandate(false);
+      setToastMessage(`✓ Mandate spending cap updated to ₹${customMandateCap.toLocaleString('en-IN')}`);
 
-      try {
-        const result =
-          await fetchApi<any>(
-            '/api/agents/buyer/checkout',
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                mandateId:
-                  activeMandate.id,
+      realtimeBus.publish({
+        eventType: 'INTENT_MANDATE_CREATED',
+        actorName: 'Aarav Sharma',
+        actorRole: 'CUSTOMER',
+        description: `Updated mandate authorization cap to ₹${customMandateCap.toLocaleString('en-IN')}`,
+        badgeType: 'purple'
+      });
+    } catch (err: any) {
+      setToastMessage(`Failed to update mandate: ${err?.message}`);
+    }
+  };
 
-                productId:
-                  product.id,
+  const mandateCap = activeMandate?.maxAmount || 25000;
+  const isSelectedOverMandate = selectedProduct ? selectedProduct.price > mandateCap : false;
 
-                expectedPrice:
-                  product.price,
-
-                quantity: 1,
-
-                idempotencyKey:
-                  `idemp_${product.id}_${Date.now()}`
-              })
-            }
-          );
-
-        setAuthDetails(result);
-        setCheckoutStep('ready_to_pay');
-      } catch (err: any) {
-        console.error(
-          'Checkout authorization failed:',
-          err
-        );
-
-        const error =
-          err?.error ||
-          err?.response?.error ||
-          err;
-
-        setBlockError({
-          code:
-            error?.code ||
-            'AUTHORIZATION_BLOCKED',
-
-          message:
-            error?.message ||
-            'Authorization declined by deterministic policy engine.',
-
-          details:
-            error?.details
-        });
-
-        setCheckoutStep('blocked');
-      }
-    };
-
-  const handleExecutePayment =
-    async () => {
-      if (!authDetails) {
-        return;
-      }
-
-      setLoading(true);
-
-      try {
-        /*
-         * LOCAL MOCK PROVIDER
-         */
-        if (
-          authDetails.isMockProvider ||
-          !authDetails.razorpayKeyId ||
-          authDetails.razorpayKeyId
-            .toLowerCase()
-            .includes('mock')
-        ) {
-          const verifyResult =
-            await fetchApi<any>(
-              '/api/payments/verify',
-              {
-                method: 'POST',
-
-                body: JSON.stringify({
-                  orderId:
-                    authDetails.orderId,
-
-                  razorpayOrderId:
-                    authDetails.razorpayOrderId,
-
-                  razorpayPaymentId:
-                    `pay_mock_${Date.now()}`,
-
-                  razorpaySignature:
-                    'mock_signature_valid'
-                })
-              }
-            );
-
-          savePaymentVerification(
-            verifyResult
-          );
-
-          return;
-        }
-
-        /*
-         * REAL RAZORPAY CHECKOUT
-         */
-        const loaded =
-          await loadRazorpayScript();
-
-        if (!loaded) {
-          throw new Error(
-            'Razorpay Checkout SDK failed to load.'
-          );
-        }
-
-        const RazorpayConstructor =
-          (window as any).Razorpay;
-
-        if (!RazorpayConstructor) {
-          throw new Error(
-            'Razorpay Checkout is unavailable.'
-          );
-        }
-
-        const options = {
-          key:
-            authDetails.razorpayKeyId,
-
-          amount:
-            Math.round(
-              Number(authDetails.amount) * 100
-            ),
-
-          currency:
-            authDetails.currency || 'INR',
-
-          name:
-            'TechNova Gear',
-
-          description:
-            'Autonomous Agent Delegated Checkout',
-
-          order_id:
-            authDetails.razorpayOrderId,
-
-          handler:
-            async function (
-              response: any
-            ) {
-              try {
-                const verifyResult =
-                  await fetchApi<any>(
-                    '/api/payments/verify',
-                    {
-                      method: 'POST',
-
-                      body: JSON.stringify({
-                        orderId:
-                          authDetails.orderId,
-
-                        razorpayOrderId:
-                          response
-                            .razorpay_order_id,
-
-                        razorpayPaymentId:
-                          response
-                            .razorpay_payment_id,
-
-                        razorpaySignature:
-                          response
-                            .razorpay_signature
-                      })
-                    }
-                  );
-
-                savePaymentVerification(
-                  verifyResult
-                );
-              } catch (
-              verifyErr: any
-              ) {
-                console.error(
-                  'Payment verification error:',
-                  verifyErr
-                );
-
-                alert(
-                  `Payment verification error: ${verifyErr?.message ||
-                  'Verification failed.'
-                  }`
-                );
-              } finally {
-                setLoading(false);
-              }
-            },
-
-          prefill: {
-            name: 'Aarav Sharma',
-            email: 'aarav@race.exchange'
-          },
-
-          theme: {
-            color: '#6366f1'
-          },
-
-          modal: {
-            ondismiss:
-              function () {
-                setLoading(false);
-              }
-          }
-        };
-
-        const razorpay =
-          new RazorpayConstructor(
-            options
-          );
-
-        razorpay.open();
-      } catch (err: any) {
-        console.error(
-          'Payment error:',
-          err
-        );
-
-        alert(
-          `Payment error: ${err?.message ||
-          'Unable to process payment.'
-          }`
-        );
-
-        setLoading(false);
-      }
-    };
-
-  /*
-   * NORMAL PROOF VERIFICATION
-   *
-   * The API endpoint is:
-   *
-   * POST /api/proofs/:orderId/verify
-   *
-   * Fastify requires JSON for this route.
-   * Therefore we explicitly send:
-   *
-   * Content-Type: application/json
-   * Body: {}
-   */
-  const handleVerifyProof =
-    async () => {
-      const orderId =
-        receiptData?.orderId ||
-        receiptData?.order?.id;
-
-      if (!orderId) {
-        alert(
-          'Order ID is missing. Cannot verify proof.'
-        );
-        return;
-      }
-
-      setVerifyingProof(true);
-      setProofVerified(null);
-
-      try {
-        const result =
-          await fetchApi<ProofVerificationResult>(
-            `/api/proofs/${encodeURIComponent(
-              orderId
-            )}/verify`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type':
-                  'application/json'
-              },
-              body: JSON.stringify({})
-            }
-          );
-
-        setProofVerified(result);
-      } catch (err: any) {
-        console.error(
-          'Proof verification failed:',
-          err
-        );
-
-        alert(
-          `Proof verification failed: ${err?.message ||
-          'Unable to verify cryptographic proof.'
-          }`
-        );
-      } finally {
-        setVerifyingProof(false);
-      }
-    };
-
-  /*
-   * TAMPER SIMULATION
-   *
-   * This intentionally asks the backend to alter
-   * an audit block only in memory and verify it.
-   *
-   * The real database chain remains untouched.
-   */
-  const handleSimulateTamper =
-    async () => {
-      const orderId =
-        receiptData?.orderId ||
-        receiptData?.order?.id;
-
-      if (!orderId) {
-        alert(
-          'Order ID is missing. Cannot run tamper test.'
-        );
-        return;
-      }
-
-      setVerifyingProof(true);
-      setProofVerified(null);
-
-      try {
-        const result =
-          await fetchApi<ProofVerificationResult>(
-            `/api/proofs/${encodeURIComponent(
-              orderId
-            )}/verify`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type':
-                  'application/json'
-              },
-              body: JSON.stringify({
-                simulateTamper: true
-              })
-            }
-          );
-
-        setProofVerified(result);
-      } catch (err: any) {
-        console.error(
-          'Tamper test failed:',
-          err
-        );
-
-        alert(
-          `Tamper test failed: ${err?.message ||
-          'Unable to run tamper test.'
-          }`
-        );
-      } finally {
-        setVerifyingProof(false);
-      }
-    };
+  const categories = ['ALL', 'keyboard', 'mouse', 'audio', 'webcam', 'accessories', 'monitors'];
+  const filteredProducts = selectedCategory === 'ALL'
+    ? catalogProducts
+    : catalogProducts.filter(p => p.category?.toLowerCase() === selectedCategory.toLowerCase());
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-
-      {/* ACTIVE MANDATE */}
-      <div className="p-4 rounded-2xl glass-panel border-indigo-500/30 flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* 1. CUSTOMER WELCOME BANNER & ACTIVE MANDATE */}
+      <div className="p-6 rounded-2xl glass-panel border border-indigo-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 text-white flex items-center justify-center font-bold shadow-lg">
+            <Bot className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-xl font-extrabold text-white">TechNova Store & AI Copilot</h1>
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/40 font-semibold">
+                AUTHENTICATED BUYER SESSION
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Natural language product discovery & bounded autonomous checkout protected by your{' '}
+              <strong className="text-white font-mono">₹{mandateCap.toLocaleString('en-IN')} INR</strong> mandate cap.
+            </p>
+          </div>
+        </div>
 
         <div className="flex items-center space-x-3">
-
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center">
-            <Lock className="w-5 h-5" />
-          </div>
-
-          <div>
-
-            <div className="flex items-center space-x-2">
-
-              <span className="font-bold text-white text-sm">
-                Active Intent Mandate
-              </span>
-
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono border border-emerald-500/40">
-                ACTIVE
-              </span>
-
-            </div>
-
-            <p className="text-xs text-slate-400 mt-0.5">
-              Bounded to{' '}
-              <strong className="text-white">
-                ₹{activeMandate?.maxAmount || 2500} INR
-              </strong>{' '}
-              for categories: [
-              keyboard, accessories
-              ]
-            </p>
-
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-4 text-xs font-mono text-slate-300">
-
-          <div className="flex items-center space-x-1.5">
-
-            <Clock className="w-3.5 h-3.5 text-indigo-400" />
-
-            <span>
-              Expires in ~120m
-            </span>
-
-          </div>
-
-        </div>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-        {/* BUYER AGENT */}
-        <div className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
-
-          <div className="p-5 border-b border-white/10">
-
-            <div className="flex items-center space-x-3">
-
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
-                <Bot className="w-5 h-5 text-indigo-400" />
-              </div>
-
-              <div>
-
-                <h2 className="text-base font-bold text-white">
-                  Buyer Agent
-                </h2>
-
-                <p className="text-xs text-slate-400">
-                  Bounded autonomous commerce assistant
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          <div className="p-5 space-y-4">
-
-            {/* CHAT MESSAGES */}
-            <div className="space-y-3 max-h-[430px] overflow-y-auto pr-1">
-
-              {messages.map(
-                (message, index) => (
-
-                  <div
-                    key={index}
-                    className={
-                      message.sender === 'user'
-                        ? 'flex justify-end'
-                        : 'flex justify-start'
-                    }
-                  >
-
-                    <div
-                      className={
-                        message.sender === 'user'
-                          ? 'max-w-[85%] rounded-xl bg-indigo-600/20 border border-indigo-500/30 px-4 py-3 text-xs text-indigo-100'
-                          : 'max-w-[90%] rounded-xl bg-slate-900/70 border border-white/10 px-4 py-3 text-xs text-slate-300'
-                      }
-                    >
-                      {message.text}
-                    </div>
-
-                  </div>
-
-                )
-              )}
-
-            </div>
-
-            {/* INPUT */}
-            <div className="flex items-center gap-2">
-
+          {isEditingMandate ? (
+            <div className="flex items-center space-x-1.5 p-1 rounded-xl bg-surface/90 border border-indigo-500/40 text-xs font-mono">
+              <span className="text-slate-400 pl-2">Cap ₹</span>
               <input
-                value={input}
-                onChange={(e) =>
-                  setInput(e.target.value)
-                }
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSendMessage();
-                  }
-                }}
-                disabled={loading}
-                className="flex-1 rounded-xl bg-slate-900/80 border border-white/10 px-4 py-3 text-xs text-white outline-none focus:border-indigo-500/50"
-                placeholder="Ask the Buyer Agent..."
+                type="number"
+                value={customMandateCap}
+                onChange={(e) => setCustomMandateCap(Number(e.target.value))}
+                className="w-24 bg-slate-900 px-2 py-1 rounded text-white font-bold outline-none border border-white/10"
               />
-
               <button
-                onClick={() =>
-                  handleSendMessage()
-                }
-                disabled={
-                  loading ||
-                  !input.trim()
-                }
-                className="w-11 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 flex items-center justify-center"
+                onClick={handleUpdateMandate}
+                className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
               >
-
-                {loading ? (
-                  <RefreshCw className="w-4 h-4 text-white animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4 text-white" />
-                )}
-
+                Save
               </button>
-
+              <button
+                onClick={() => setIsEditingMandate(false)}
+                className="px-2 py-1 text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
             </div>
-
-          </div>
-
-        </div>
-
-        {/* CHECKOUT / PRODUCT */}
-        <div className="space-y-5">
-
-          {selectedProduct ? (
-
-            <div className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
-
-              {/* PRODUCT HEADER */}
-              <div className="p-5 border-b border-white/10">
-
-                <div className="flex items-start justify-between gap-4">
-
-                  <div>
-
-                    <div className="flex items-center space-x-2">
-
-                      <Layers className="w-4 h-4 text-indigo-400" />
-
-                      <span className="text-[10px] uppercase tracking-wider font-mono text-indigo-300">
-                        Agent Selected Product
-                      </span>
-
-                    </div>
-
-                    <h2 className="mt-2 text-lg font-bold text-white">
-                      {selectedProduct.name}
-                    </h2>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      {selectedProduct.description}
-                    </p>
-
-                  </div>
-
-                  <div className="text-right">
-
-                    <div className="text-xl font-bold text-white">
-                      ₹{selectedProduct.price}
-                    </div>
-
-                    <div className="text-[10px] text-slate-500">
-                      {selectedProduct.currency}
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-              {/* PRODUCT DETAILS */}
-              <div className="p-5 space-y-4">
-
-                <div className="grid grid-cols-2 gap-3">
-
-                  <div className="rounded-xl bg-slate-900/60 border border-white/5 p-3">
-
-                    <div className="text-[10px] text-slate-500">
-                      Category
-                    </div>
-
-                    <div className="text-xs text-white font-semibold mt-1">
-                      {selectedProduct.category}
-                    </div>
-
-                  </div>
-
-                  <div className="rounded-xl bg-slate-900/60 border border-white/5 p-3">
-
-                    <div className="text-[10px] text-slate-500">
-                      Stock
-                    </div>
-
-                    <div className="text-xs text-emerald-400 font-semibold mt-1">
-                      {selectedProduct.stock}
-                    </div>
-
-                  </div>
-
-                </div>
-
-                {/* ATTRIBUTES */}
-                <div className="p-3.5 rounded-xl bg-surface/70 border border-white/5 space-y-2">
-
-                  <span className="font-semibold text-slate-300 text-[11px]">
-                    Machine-Readable Specifications:
-                  </span>
-
-                  <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-400">
-
-                    {Object.entries(
-                      selectedProduct.attributes || {}
-                    ).map(
-                      ([key, value]) => (
-
-                        <div
-                          key={key}
-                          className="p-1.5 rounded bg-white/5 flex flex-col"
-                        >
-
-                          <span className="text-[9px] uppercase text-slate-500">
-                            {key}
-                          </span>
-
-                          <span className="text-slate-200 font-medium truncate">
-                            {String(value)}
-                          </span>
-
-                        </div>
-
-                      )
-                    )}
-
-                  </div>
-
-                </div>
-
-                {/* IDLE */}
-                {checkoutStep === 'idle' && (
-
-                  <div className="space-y-3">
-
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center space-x-2">
-
-                      <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-
-                      <span>
-                        Price ₹{selectedProduct.price}
-                        {' '}
-                        satisfies current Mandate Cap of ₹
-                        {activeMandate?.maxAmount || 2500}
-                      </span>
-
-                    </div>
-
-                    <button
-                      onClick={() =>
-                        handleInitiateCheckout(
-                          selectedProduct
-                        )
-                      }
-                      disabled={
-                        !activeMandate ||
-                        loading
-                      }
-                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center space-x-2"
-                    >
-
-                      <ShieldCheck className="w-4 h-4" />
-
-                      <span>
-                        Authorize Purchase
-                      </span>
-
-                    </button>
-
-                  </div>
-
-                )}
-
-                {/* AUTHORIZING */}
-                {checkoutStep === 'authorizing' && (
-
-                  <div className="p-5 rounded-xl bg-indigo-950/40 border border-indigo-500/40 text-center">
-
-                    <RefreshCw className="w-7 h-7 text-indigo-400 animate-spin mx-auto" />
-
-                    <h3 className="text-sm font-bold text-white mt-3">
-                      Evaluating Authorization
-                    </h3>
-
-                    <p className="text-xs text-slate-400 mt-1">
-                      Evaluating deterministic commerce rules,
-                      merchant status, inventory and live catalog price.
-                    </p>
-
-                  </div>
-
-                )}
-
-                {/* BLOCKED */}
-                {checkoutStep === 'blocked' &&
-                  blockError && (
-
-                    <div className="p-5 rounded-xl bg-red-950/40 border border-red-500/50 space-y-3">
-
-                      <div className="flex items-center space-x-2 text-red-400 font-bold text-sm">
-
-                        <AlertCircle className="w-5 h-5" />
-
-                        <span>
-                          TRANSACTION BLOCKED
-                        </span>
-
-                      </div>
-
-                      <p className="text-xs text-slate-200 leading-relaxed">
-                        {blockError.message ||
-                          'Authorization declined by deterministic policy engine.'}
-                      </p>
-
-                      {blockError.code && (
-
-                        <div className="p-3 rounded-lg bg-slate-950/70 border border-red-500/20">
-
-                          <div className="text-[10px] text-slate-500">
-                            Reason Code
-                          </div>
-
-                          <div className="text-xs text-red-400 font-bold font-mono mt-1">
-                            {blockError.code}
-                          </div>
-
-                        </div>
-
-                      )}
-
-                      {blockError.details && (
-
-                        <div className="p-3 rounded-lg bg-slate-950/70 border border-red-500/20">
-
-                          <div className="text-[10px] text-slate-500 mb-2">
-                            Authorization Details
-                          </div>
-
-                          <pre className="text-[10px] text-slate-400 whitespace-pre-wrap break-words">
-                            {JSON.stringify(
-                              blockError.details,
-                              null,
-                              2
-                            )}
-                          </pre>
-
-                        </div>
-
-                      )}
-
-                    </div>
-
-                  )}
-
-                {/* READY TO PAY */}
-                {checkoutStep === 'ready_to_pay' &&
-                  authDetails && (
-
-                    <div className="p-5 rounded-xl bg-indigo-950/40 border border-indigo-500/40 space-y-4">
-
-                      <div className="flex items-center space-x-2">
-
-                        <ShieldCheck className="w-5 h-5 text-emerald-400" />
-
-                        <span className="font-bold text-sm text-white">
-                          AUTHORIZATION APPROVED
-                        </span>
-
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-slate-950/70 border border-white/5 text-xs space-y-2 font-mono">
-
-                        <div className="flex justify-between gap-3">
-
-                          <span className="text-slate-500">
-                            Internal Order ID:
-                          </span>
-
-                          <span className="text-slate-200 break-all text-right">
-                            {authDetails.orderId}
-                          </span>
-
-                        </div>
-
-                        <div className="flex justify-between gap-3">
-
-                          <span className="text-slate-500">
-                            Razorpay Order ID:
-                          </span>
-
-                          <span className="text-slate-200 break-all text-right">
-                            {authDetails.razorpayOrderId}
-                          </span>
-
-                        </div>
-
-                        <div className="flex justify-between">
-
-                          <span className="text-slate-500">
-                            Total Authorized:
-                          </span>
-
-                          <span className="text-emerald-400 font-bold">
-                            ₹{authDetails.amount}
-                            {' '}
-                            {authDetails.currency ||
-                              'INR'}
-                          </span>
-
-                        </div>
-
-                      </div>
-
-                      <button
-                        onClick={
-                          handleExecutePayment
-                        }
-                        disabled={loading}
-                        className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center space-x-2"
-                      >
-
-                        {loading ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <CreditCard className="w-4 h-4" />
-                        )}
-
-                        <span>
-                          {loading
-                            ? 'Verifying Razorpay Signature...'
-                            : 'Confirm Razorpay Test Payment'}
-                        </span>
-
-                      </button>
-
-                    </div>
-
-                  )}
-
-                {/* PAID */}
-                {checkoutStep === 'paid' &&
-                  receiptData && (
-
-                    <div className="p-5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 space-y-4">
-
-                      <div className="flex items-center space-x-2 text-emerald-400 font-bold text-sm">
-
-                        <CheckCircle2 className="w-5 h-5" />
-
-                        <span>
-                          PAYMENT COMPLETED & VERIFIED
-                        </span>
-
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-slate-950/80 border border-emerald-500/20 text-[11px] font-mono space-y-2 text-slate-300">
-
-                        {/* ORDER ID */}
-                        <div className="flex justify-between gap-3">
-
-                          <span className="text-slate-500">
-                            Order ID:
-                          </span>
-
-                          <span className="text-white font-bold text-right break-all">
-                            {receiptData.orderId ||
-                              receiptData.order?.id ||
-                              'N/A'}
-                          </span>
-
-                        </div>
-
-                        {/* PAYMENT ID */}
-                        <div className="flex justify-between gap-3">
-
-                          <span className="text-slate-500">
-                            Payment ID:
-                          </span>
-
-                          <span className="text-emerald-400 text-right break-all">
-                            {receiptData.razorpayPaymentId ||
-                              receiptData.receipt?.razorpayPaymentId ||
-                              receiptData.paymentId ||
-                              'N/A'}
-                          </span>
-
-                        </div>
-
-                        {/* AMOUNT */}
-                        <div className="flex justify-between gap-3">
-
-                          <span className="text-slate-500">
-                            Amount:
-                          </span>
-
-                          <span className="text-white">
-                            ₹
-                            {receiptData.amount ??
-                              selectedProduct.price}
-                            {' '}
-                            {receiptData.currency ||
-                              'INR'}
-                          </span>
-
-                        </div>
-
-                        {/* DECISION HASH */}
-                        <div className="flex justify-between gap-3">
-
-                          <span className="text-slate-500">
-                            Decision Hash:
-                          </span>
-
-                          <span
-                            className="text-indigo-300 truncate max-w-[220px]"
-                            title={
-                              receiptData.proof
-                                ?.decisionHash
-                            }
-                          >
-                            {receiptData.proof
-                              ?.decisionHash ||
-                              'N/A'}
-                          </span>
-
-                        </div>
-
-                        {/* TRANSACTION HASH */}
-                        <div className="flex justify-between gap-3">
-
-                          <span className="text-slate-500">
-                            Transaction Hash:
-                          </span>
-
-                          <span
-                            className="text-indigo-300 truncate max-w-[220px]"
-                            title={
-                              receiptData.proof
-                                ?.transactionHash
-                            }
-                          >
-                            {receiptData.proof
-                              ?.transactionHash ||
-                              'N/A'}
-                          </span>
-
-                        </div>
-
-                      </div>
-
-                      {/* NORMAL PROOF VERIFICATION */}
-                      <button
-                        onClick={
-                          handleVerifyProof
-                        }
-                        disabled={
-                          verifyingProof
-                        }
-                        className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs flex items-center justify-center space-x-1.5 transition-all"
-                      >
-
-                        {verifyingProof ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <ShieldCheck className="w-4 h-4" />
-                        )}
-
-                        <span>
-                          {verifyingProof
-                            ? 'Verifying SHA-256 Hash Chain...'
-                            : 'Verify Cryptographic Proof Certificate'}
-                        </span>
-
-                      </button>
-
-                      {/* TAMPER TEST */}
-                      <button
-                        onClick={
-                          handleSimulateTamper
-                        }
-                        disabled={
-                          verifyingProof
-                        }
-                        className="w-full py-2 rounded-xl bg-red-950/40 hover:bg-red-900/50 disabled:opacity-50 border border-red-500/30 text-red-300 font-semibold text-[11px] flex items-center justify-center space-x-1.5"
-                      >
-
-                        <AlertCircle className="w-3.5 h-3.5" />
-
-                        <span>
-                          Simulate Tamper Detection
-                        </span>
-
-                      </button>
-
-                      {/* VERIFICATION RESULT */}
-                      {proofVerified && (
-
-                        <div
-                          className={
-                            proofVerified.verified
-                              ? 'p-4 rounded-lg bg-emerald-950/60 border border-emerald-500/30 space-y-3'
-                              : 'p-4 rounded-lg bg-red-950/60 border border-red-500/30 space-y-3'
-                          }
-                        >
-
-                          <div
-                            className={
-                              proofVerified.verified
-                                ? 'font-bold flex items-center space-x-2 text-emerald-400'
-                                : 'font-bold flex items-center space-x-2 text-red-400'
-                            }
-                          >
-
-                            {proofVerified.verified ? (
-                              <CheckCircle2 className="w-4 h-4" />
-                            ) : (
-                              <AlertCircle className="w-4 h-4" />
-                            )}
-
-                            <span>
-                              {proofVerified.verified
-                                ? '✓ VALID_UNMODIFIED'
-                                : 'TAMPER DETECTED'}
-                            </span>
-
-                          </div>
-
-                          <p
-                            className={
-                              proofVerified.verified
-                                ? 'text-[10px] text-emerald-300 leading-relaxed'
-                                : 'text-[10px] text-red-300 leading-relaxed'
-                            }
-                          >
-                            {proofVerified.details ||
-                              'Verification completed.'}
-                          </p>
-
-                          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-
-                            <div className="rounded bg-black/20 p-2">
-
-                              <div className="text-slate-500">
-                                Decision Hash
-                              </div>
-
-                              <div
-                                className={
-                                  proofVerified.checks
-                                    ?.decisionHashMatches
-                                    ? 'text-emerald-400 mt-1'
-                                    : 'text-red-400 mt-1'
-                                }
-                              >
-                                {proofVerified.checks
-                                  ?.decisionHashMatches
-                                  ? 'MATCH'
-                                  : 'FAILED'}
-                              </div>
-
-                            </div>
-
-                            <div className="rounded bg-black/20 p-2">
-
-                              <div className="text-slate-500">
-                                Transaction Hash
-                              </div>
-
-                              <div
-                                className={
-                                  proofVerified.checks
-                                    ?.transactionHashMatches
-                                    ? 'text-emerald-400 mt-1'
-                                    : 'text-red-400 mt-1'
-                                }
-                              >
-                                {proofVerified.checks
-                                  ?.transactionHashMatches
-                                  ? 'MATCH'
-                                  : 'FAILED'}
-                              </div>
-
-                            </div>
-
-                            <div className="rounded bg-black/20 p-2">
-
-                              <div className="text-slate-500">
-                                Audit Chain
-                              </div>
-
-                              <div
-                                className={
-                                  proofVerified.checks
-                                    ?.auditHashChainValid
-                                    ? 'text-emerald-400 mt-1'
-                                    : 'text-red-400 mt-1'
-                                }
-                              >
-                                {proofVerified.checks
-                                  ?.auditHashChainValid
-                                  ? 'VALID'
-                                  : 'BROKEN'}
-                              </div>
-
-                            </div>
-
-                            <div className="rounded bg-black/20 p-2">
-
-                              <div className="text-slate-500">
-                                Events Verified
-                              </div>
-
-                              <div className="text-white mt-1">
-                                {proofVerified.checks
-                                  ?.eventsVerifiedCount ??
-                                  0}
-                              </div>
-
-                            </div>
-
-                          </div>
-
-                          <div className="text-[9px] text-slate-500 font-mono">
-                            Status:{' '}
-                            {proofVerified.integrityStatus ||
-                              'UNKNOWN'}
-                          </div>
-
-                        </div>
-
-                      )}
-
-                    </div>
-
-                  )}
-
-              </div>
-
-            </div>
-
           ) : (
-
-            <div className="p-8 rounded-2xl glass-panel border border-white/10 text-center space-y-4">
-
-              <Bot className="w-12 h-12 text-indigo-400 mx-auto" />
-
-              <h3 className="text-base font-bold text-white">
-                No Item Selected
-              </h3>
-
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Chat with the Buyer Agent on the left.
-                When the agent identifies a product matching
-                your intent, select it to review specifications
-                and run policy gating.
-              </p>
-
-              <button
-                onClick={() =>
-                  handleSendMessage()
-                }
-                disabled={
-                  loading ||
-                  !input.trim()
-                }
-                className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold"
-              >
-
-                <span>
-                  Search Catalog
-                </span>
-
-                <ArrowRight className="w-3.5 h-3.5" />
-
-              </button>
-
-            </div>
-
+            <button
+              onClick={() => setIsEditingMandate(true)}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-surface border border-white/10 hover:border-indigo-500/50 transition-all text-xs font-mono text-slate-300"
+              title="Click to adjust mandate authorization cap"
+            >
+              <Lock className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Mandate: ₹{mandateCap.toLocaleString('en-IN')}</span>
+              <span className="text-[10px] text-indigo-400 underline">Edit</span>
+            </button>
           )}
 
-        </div>
+          <Button
+            variant="primary"
+            onClick={() => setActiveTab('copilot')}
+            className="text-xs flex items-center space-x-1.5"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>AI Copilot</span>
+          </Button>
 
+          <Link href="/buyer/cart">
+            <Button variant="outline" className="text-xs flex items-center space-x-1.5">
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>Cart ({cartItems.reduce((s, i) => s + i.quantity, 0)})</span>
+            </Button>
+          </Link>
+        </div>
       </div>
 
+      {/* Navigation Tabs */}
+      <div className="flex items-center space-x-2 border-b border-white/10 pb-3">
+        {[
+          { id: 'copilot', label: 'AI Shopping Copilot', icon: Bot },
+          { id: 'storefront', label: `Catalog (${catalogProducts.length} Items)`, icon: Layers },
+          { id: 'compare', label: 'Hardware Spec Comparison', icon: Scale }
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+                isActive
+                  ? 'bg-indigo-600 text-white shadow-lg glow-brand'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 2. TAB: STOREFRONT CATALOG */}
+      {activeTab === 'storefront' && (
+        <div className="space-y-6">
+          {/* Category Filter Pills */}
+          <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs font-mono">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-xl uppercase tracking-wider transition-all ${
+                  selectedCategory === cat
+                    ? 'bg-indigo-600 text-white font-bold shadow-md'
+                    : 'bg-surface text-slate-400 hover:text-white border border-white/5'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Product Grid (26 realistic products) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredProducts.map(prod => {
+              const imgUrl = PRODUCT_IMAGES[prod.id] || PRODUCT_IMAGES['default'];
+              const isOver = prod.price > mandateCap;
+              const attrs = (prod.attributes || {}) as Record<string, any>;
+
+              return (
+                <Card
+                  key={prod.id}
+                  className="p-5 flex flex-col justify-between space-y-4 hover:border-indigo-500/40 transition-all group"
+                >
+                  <div className="space-y-3">
+                    <Link
+                      href={`/buyer/product/${prod.id}`}
+                      className="block relative aspect-video rounded-xl overflow-hidden bg-slate-900 border border-white/5 cursor-pointer group/img"
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={prod.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e: any) => { e.target.src = PRODUCT_IMAGES['default']; }}
+                      />
+                      <div className="absolute top-2 right-2 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-950/80 backdrop-blur text-[10px] font-mono text-amber-400 font-bold border border-white/10">
+                        <Star className="w-3 h-3 fill-amber-400" />
+                        <span>{attrs.rating || '4.8'}</span>
+                      </div>
+                      <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-950/80 backdrop-blur text-[9px] font-mono text-slate-300 uppercase">
+                        {prod.category}
+                      </div>
+                    </Link>
+
+                    <div>
+                      <Link href={`/buyer/product/${prod.id}`} className="block">
+                        <h3 className="font-bold text-white text-sm line-clamp-1 group-hover:text-indigo-300 hover:underline transition-colors">
+                          {prod.name}
+                        </h3>
+                      </Link>
+                      <p className="text-slate-400 text-xs line-clamp-2 mt-1 leading-relaxed">
+                        {prod.description}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1 text-[11px] text-slate-400 font-mono">
+                      <div className="truncate">
+                        <span className="text-slate-500">Feature:</span> {attrs.switch || attrs.sensor || attrs.driver || attrs.resolution || attrs.ports || attrs.capacity || 'Premium Build'}
+                      </div>
+                      <div className="truncate">
+                        <span className="text-slate-500">Conn:</span> {attrs.connection || attrs.ports || 'Wireless / USB'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-white/5 space-y-3">
+                    <div className="flex items-baseline justify-between font-mono">
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Price</div>
+                        <div className="text-lg font-extrabold text-white">
+                          ₹{prod.price.toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-[10px] font-bold ${isOver ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {isOver ? `Over cap (₹${mandateCap})` : '✓ In Mandate'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          addToCart(prod, 1);
+                          setToastMessage(`✓ Added ${prod.name} to cart`);
+                        }}
+                        className="py-2 text-[11px] flex items-center justify-center space-x-1"
+                      >
+                        <ShoppingCart className="w-3 h-3" />
+                        <span>Add</span>
+                      </Button>
+                      <Button
+                        variant="primary"
+                        onClick={() => handleBuyNow(prod)}
+                        className="py-2 text-[11px] flex items-center justify-center space-x-1 shadow-md glow-brand"
+                      >
+                        <span>Buy Now</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 3. TAB: AI SHOPPING COPILOT */}
+      {activeTab === 'copilot' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Chat Pane */}
+          <div className="lg:col-span-8 flex flex-col space-y-4">
+            <Card className="p-6 flex-1 min-h-[500px] flex flex-col justify-between space-y-4">
+              <div className="space-y-4 overflow-y-auto max-h-[600px] pr-2">
+                {messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex flex-col ${
+                      msg.sender === 'user' ? 'items-end' : 'items-start'
+                    }`}
+                  >
+                    <div
+                      className={`max-w-2xl p-4 rounded-2xl text-xs leading-relaxed space-y-3 ${
+                        msg.sender === 'user'
+                          ? 'bg-indigo-600 text-white rounded-br-none'
+                          : 'bg-surface/90 border border-white/10 text-slate-200 rounded-bl-none'
+                      }`}
+                    >
+                      <div className="whitespace-pre-wrap">{msg.text}</div>
+
+                      {/* Display Product Recommendations Cards if returned */}
+                      {msg.data?.products && msg.data.products.length > 0 && (
+                        <div className="pt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-white/10">
+                          {msg.data.products.slice(0, 4).map(prod => (
+                            <div
+                              key={prod.id}
+                              className="p-3 rounded-xl bg-slate-900/80 border border-white/10 space-y-2 hover:border-indigo-500/50 transition-all"
+                            >
+                              <div className="flex items-center justify-between">
+                                <Link href={`/buyer/product/${prod.id}`} className="hover:underline truncate max-w-[70%]">
+                                  <h4 className="font-bold text-white text-xs truncate hover:text-indigo-300">{prod.name}</h4>
+                                </Link>
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[9px] font-bold">
+                                  {prod.aiMatchScore}% Match
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between font-mono text-xs">
+                                <span className="text-white font-bold">₹{prod.price.toLocaleString('en-IN')}</span>
+                                <span className="text-[10px] text-slate-400 uppercase">{prod.category}</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5 pt-1">
+                                <button
+                                  onClick={() => {
+                                    addToCart(prod, 1);
+                                    setToastMessage(`✓ Added ${prod.name} to cart`);
+                                  }}
+                                  className="py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold"
+                                >
+                                  + Cart
+                                </button>
+                                <button
+                                  onClick={() => handleBuyNow(prod)}
+                                  className="py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold"
+                                >
+                                  Buy Now →
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {loading && (
+                  <div className="flex items-center space-x-2 text-xs text-indigo-400 font-mono p-3 bg-indigo-950/20 rounded-xl border border-indigo-500/20 w-fit">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>{loadingStateText}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick reply suggestion chips */}
+              <div className="flex items-center space-x-1.5 overflow-x-auto py-2 text-xs">
+                {[
+                  'Keyboards under ₹2500',
+                  'Best wireless mouse',
+                  'Compare keyboards',
+                  "What's in my cart?",
+                  'Show accessories under ₹1000',
+                  'Show me something cheaper'
+                ].map(chip => (
+                  <button
+                    key={chip}
+                    onClick={() => handleSendMessage(chip)}
+                    className="px-3 py-1 rounded-full bg-surface border border-white/10 hover:border-indigo-500/40 text-slate-300 hover:text-white transition-all whitespace-nowrap text-[11px]"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+
+              {/* Input box */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }}
+                className="flex items-center space-x-2 pt-2 border-t border-white/10"
+              >
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask for hardware, compare specs, or manage your cart..."
+                  className="flex-1 bg-surface border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <Button type="submit" variant="primary" disabled={loading || !input.trim()} className="px-4 py-2.5">
+                  <Send className="w-4 h-4" />
+                </Button>
+              </form>
+            </Card>
+          </div>
+
+          {/* Context & Active Selection Sidebar */}
+          <div className="lg:col-span-4 space-y-4">
+            <Card className="p-5 space-y-4">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                Active Selection Context
+              </h3>
+              {selectedProduct ? (
+                <div className="space-y-3 text-xs">
+                  <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-900 border border-white/5">
+                    <img
+                      src={PRODUCT_IMAGES[selectedProduct.id] || PRODUCT_IMAGES['default']}
+                      alt={selectedProduct.name}
+                      className="w-full h-full object-cover"
+                      onError={(e: any) => { e.target.src = PRODUCT_IMAGES['default']; }}
+                    />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white">{selectedProduct.name}</h4>
+                    <p className="text-slate-400 text-[11px] mt-1 line-clamp-2">{selectedProduct.description}</p>
+                  </div>
+                  <div className="flex justify-between font-mono pt-1">
+                    <span className="text-slate-500">Price:</span>
+                    <span className="text-white font-bold">₹{selectedProduct.price.toLocaleString('en-IN')} INR</span>
+                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={() => handleBuyNow(selectedProduct)}
+                    className="w-full py-2.5 text-xs font-bold shadow-md glow-brand"
+                  >
+                    Proceed to Checkout with this SKU →
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">Ask Copilot to discover and select a product.</p>
+              )}
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* 4. TAB: INTERACTIVE HARDWARE COMPARISON MATRIX */}
+      {activeTab === 'compare' && (
+        <Card className="p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                <Scale className="w-5 h-5 text-indigo-400" />
+                <span>Interactive Hardware Comparison Matrix</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Dynamic side-by-side specification decomposition, AI match confidence, and price-to-value scoring across real catalog products.
+              </p>
+            </div>
+            <Badge variant="brand">{Math.min(catalogProducts.length, 4)} SKUs Evaluated</Badge>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr>
+                  <th className="w-1/5 text-left p-3 text-slate-400 uppercase text-[10px]">Specification Factor</th>
+                  {catalogProducts.slice(0, 4).map((prod, i) => (
+                    <th key={prod.id} className="w-1/5 text-center p-3 border-l border-white/5">
+                      <div className="text-white font-bold text-sm font-sans">{prod.name}</div>
+                      <div className="text-emerald-400 font-extrabold text-base mt-1">₹{prod.price.toLocaleString('en-IN')}</div>
+                      {i === 0 && (
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[9px] font-bold border border-indigo-500/30">
+                          ★ TOP VALUE
+                        </span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Category</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-slate-300 uppercase border-l border-white/5">
+                      {prod.category}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Key Connectivity</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-slate-300 border-l border-white/5">
+                      {String((prod.attributes as any)?.connection || (prod.attributes as any)?.connectivity || (prod.attributes as any)?.ports || 'Wired USB-C')}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Switch / Sensor / Driver</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-slate-300 border-l border-white/5">
+                      {String((prod.attributes as any)?.switch || (prod.attributes as any)?.sensor || (prod.attributes as any)?.driver || (prod.attributes as any)?.resolution || (prod.attributes as any)?.panel || 'Tactile Build')}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Battery Life / Power</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-slate-300 border-l border-white/5">
+                      {String((prod.attributes as any)?.battery || (prod.attributes as any)?.power || 'Bus Powered')}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Weight & Dimensions</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-slate-300 border-l border-white/5">
+                      {(prod.attributes as any)?.weight || 'N/A'} · {(prod.attributes as any)?.dimensions || 'Compact'}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Customer Rating</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-amber-400 border-l border-white/5">
+                      ★ {(prod.attributes as any)?.rating || '4.8'} ({(prod.attributes as any)?.reviewsCount || 200} reviews)
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Key Strength</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-slate-300 border-l border-white/5 text-[11px]">
+                      {(prod.attributes as any)?.keyStrength || prod.description}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Warranty</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center text-slate-300 border-l border-white/5">
+                      {(prod.attributes as any)?.warranty || prod.returnPolicy}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 font-semibold text-slate-300">Action</td>
+                  {catalogProducts.slice(0, 4).map(prod => (
+                    <td key={prod.id} className="p-3 text-center border-l border-white/5">
+                      <Button
+                        variant="primary"
+                        onClick={() => handleBuyNow(prod)}
+                        className="text-xs py-1.5 px-3"
+                      >
+                        Buy Now
+                      </Button>
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

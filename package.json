@@ -16,7 +16,8 @@
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "start:api": "npm run dev --workspace=apps/api",
-    "start:web": "npm run dev --workspace=apps/web"
+    "start:web": "npm run start --workspace=apps/web",
+    "dev:web": "npm run dev --workspace=apps/web"
   },
   "keywords": [
     "razorpay",

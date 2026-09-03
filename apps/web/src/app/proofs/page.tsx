@@ -49,9 +49,19 @@ export default function ProofsPage() {
         method: 'POST',
         body: JSON.stringify({ simulateTamper })
       });
-      setVerificationResult(res);
+      const isStrictlyValid = Boolean(
+        res.valid &&
+        res.verified &&
+        res.checks?.decisionHashMatches !== false &&
+        res.checks?.transactionHashMatches !== false &&
+        res.checks?.auditHashChainValid !== false
+      );
+      setVerificationResult({
+        ...res,
+        verified: isStrictlyValid
+      });
     } catch (err: any) {
-      alert(`Verification error: ${err.message}`);
+      setVerificationResult({ verified: false, error: err?.message || 'Verification failed' });
     } finally {
       setVerifying(false);
     }

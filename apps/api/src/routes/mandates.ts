@@ -78,6 +78,74 @@ export async function mandateRoutes(app: FastifyInstance) {
     };
   });
 
+  // Get Active Mandate for Buyer
+  app.get('/api/mandates/active', async (req, reply) => {
+    const user = await getAuthContext(req, 'BUYER');
+    
+    // Find latest active non-expired mandate
+    const mandate = await prisma.mandate.findFirst({
+      where: {
+        userId: user.id,
+        status: 'ACTIVE',
+        expiresAt: { gt: new Date() }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (mandate) {
+      return {
+        id: mandate.id,
+        userId: mandate.userId,
+        agentId: mandate.agentId,
+        merchantId: mandate.merchantId,
+        intent: mandate.intent,
+        maxAmount: mandate.maxAmount,
+        currency: mandate.currency,
+        allowedCategories: JSON.parse(mandate.allowedCategories || '[]'),
+        allowedActions: JSON.parse(mandate.allowedActions || '[]'),
+        confirmationRequired: mandate.confirmationRequired,
+        status: mandate.status,
+        expiresAt: mandate.expiresAt.toISOString(),
+        createdAt: mandate.createdAt.toISOString()
+      };
+    }
+
+    // Auto-create standard active mandate if none exists
+    const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    const newMandate = await prisma.mandate.create({
+      data: {
+        id: `mand_${Date.now().toString(36)}`,
+        userId: user.id,
+        agentId: 'buyer_agent',
+        merchantId: 'merch_technova',
+        intent: 'Purchase hardware, peripherals, and accessories within authorized bounds',
+        maxAmount: 25000,
+        currency: 'INR',
+        allowedCategories: JSON.stringify(['keyboard', 'mouse', 'audio', 'webcam', 'accessories', 'monitors', 'workspace']),
+        allowedActions: JSON.stringify(['search', 'compare', 'purchase']),
+        confirmationRequired: false,
+        status: 'ACTIVE',
+        expiresAt
+      }
+    });
+
+    return {
+      id: newMandate.id,
+      userId: newMandate.userId,
+      agentId: newMandate.agentId,
+      merchantId: newMandate.merchantId,
+      intent: newMandate.intent,
+      maxAmount: newMandate.maxAmount,
+      currency: newMandate.currency,
+      allowedCategories: JSON.parse(newMandate.allowedCategories || '[]'),
+      allowedActions: JSON.parse(newMandate.allowedActions || '[]'),
+      confirmationRequired: newMandate.confirmationRequired,
+      status: newMandate.status,
+      expiresAt: newMandate.expiresAt.toISOString(),
+      createdAt: newMandate.createdAt.toISOString()
+    };
+  });
+
   // Get Mandate by ID
   app.get('/api/mandates/:id', async (req, reply) => {
     const { id } = req.params as { id: string };

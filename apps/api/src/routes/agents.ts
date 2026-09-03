@@ -23,7 +23,7 @@ export async function agentRoutes(app: FastifyInstance) {
       });
     }
 
-    const { message, userId, mandateId } = parseResult.data;
+    const { message, userId, mandateId, lastShownProductIds, selectedProductId, cartItems } = parseResult.data;
 
     // 1. Fetch catalog
     const products = await prisma.product.findMany({
@@ -49,34 +49,50 @@ export async function agentRoutes(app: FastifyInstance) {
       merchantTrustScore: p.merchant.trustScore
     }));
 
-    // 2. Fetch existing mandate if any
+    // 2. Fetch existing mandate if any (with fallback to latest active mandate)
     let currentMandate = undefined;
-    if (mandateId) {
-      const m = await prisma.mandate.findUnique({ where: { id: mandateId } });
-      if (m) {
-        currentMandate = {
-          id: m.id,
-          userId: m.userId,
-          agentId: m.agentId,
-          merchantId: m.merchantId,
-          intent: m.intent,
-          maxAmount: m.maxAmount,
-          currency: m.currency,
-          allowedCategories: JSON.parse(m.allowedCategories || '[]'),
-          allowedActions: JSON.parse(m.allowedActions || '[]'),
-          confirmationRequired: m.confirmationRequired,
-          status: m.status as any,
-          expiresAt: m.expiresAt.toISOString(),
-          createdAt: m.createdAt.toISOString()
-        };
-      }
+    let m = mandateId ? await prisma.mandate.findUnique({ where: { id: mandateId } }) : null;
+    if (!m) {
+      m = await prisma.mandate.findFirst({
+        where: {
+          status: 'ACTIVE',
+          expiresAt: { gt: new Date() }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
     }
 
-    // 3. Extract intent with AI provider (or deterministic fallback)
-    const structuredIntent = await aiService.parseBuyerIntent(message);
+    if (m) {
+      currentMandate = {
+        id: m.id,
+        userId: m.userId,
+        agentId: m.agentId,
+        merchantId: m.merchantId,
+        intent: m.intent,
+        maxAmount: m.maxAmount,
+        currency: m.currency,
+        allowedCategories: JSON.parse(m.allowedCategories || '[]'),
+        allowedActions: JSON.parse(m.allowedActions || '[]'),
+        confirmationRequired: m.confirmationRequired,
+        status: m.status as any,
+        expiresAt: m.expiresAt.toISOString(),
+        createdAt: m.createdAt.toISOString()
+      };
+    }
 
-    // 4. Process with Buyer Agent
-    const agentResponse = BuyerAgent.processMessage(message, productDtos, currentMandate, structuredIntent);
+    // 3. Build session context
+    const sessionContext = {
+      lastShownProductIds,
+      selectedProductId,
+      cartItems,
+      mandateCap: currentMandate?.maxAmount
+    };
+
+    // 4. Extract intent with AI provider (or deterministic fallback)
+    const structuredIntent = await aiService.parseBuyerIntent(message, sessionContext);
+
+    // 5. Process with Buyer Agent
+    const agentResponse = BuyerAgent.processMessage(message, productDtos, currentMandate, structuredIntent, sessionContext);
 
     // 5. Record agent interaction
     await prisma.agentInteraction.create({

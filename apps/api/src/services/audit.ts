@@ -86,7 +86,7 @@ export class AuditService {
     // 2. Normalize values
     // ---------------------------------------------------------
     const reasonCodes = input.reasonCodes ?? [];
-    const metadata = input.metadata ?? {};
+    const metadata = input.metadata ? JSON.parse(JSON.stringify(input.metadata)) : {};
 
     /*
      * IMPORTANT:

@@ -1,6 +1,16 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma';
 
+function parseAttributes(attr: any) {
+  if (!attr) return {};
+  if (typeof attr === 'object') return attr;
+  try {
+    return JSON.parse(attr);
+  } catch {
+    return {};
+  }
+}
+
 export async function catalogRoutes(app: FastifyInstance) {
   // Human & UI catalog
   app.get('/api/catalog', async () => {
@@ -20,7 +30,7 @@ export async function catalogRoutes(app: FastifyInstance) {
       stock: p.stock,
       active: p.active,
       agentPurchasable: p.agentPurchasable,
-      attributes: JSON.parse(p.attributes || '{}'),
+      attributes: parseAttributes(p.attributes),
       returnPolicy: p.returnPolicy,
       merchantName: p.merchant.name,
       merchantTrustScore: p.merchant.trustScore,
@@ -49,7 +59,7 @@ export async function catalogRoutes(app: FastifyInstance) {
       stock: p.stock,
       active: p.active,
       agentPurchasable: p.agentPurchasable,
-      attributes: JSON.parse(p.attributes || '{}'),
+      attributes: parseAttributes(p.attributes),
       returnPolicy: p.returnPolicy,
       merchantName: p.merchant.name,
       merchantTrustScore: p.merchant.trustScore,
@@ -86,7 +96,7 @@ export async function catalogRoutes(app: FastifyInstance) {
       stock: product.stock,
       active: product.active,
       agentPurchasable: product.agentPurchasable,
-      attributes: JSON.parse(product.attributes || '{}'),
+      attributes: parseAttributes(product.attributes),
       returnPolicy: product.returnPolicy,
       merchantName: product.merchant.name,
       merchantTrustScore: product.merchant.trustScore,

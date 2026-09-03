@@ -7,7 +7,11 @@ build/
 !.env.example
 *.log
 .DS_Store
+*.db
+*.db-journal
 prisma/*.db
 prisma/*.db-journal
 .turbo
 coverage/
+scratch/
+apps/web/test_routes_all.mjs

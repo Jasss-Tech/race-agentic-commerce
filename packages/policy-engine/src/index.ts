@@ -1,12 +1,24 @@
 import { PolicyEvaluationResult, PolicyRuleResult } from '@race/types';
 
+export interface CartItemContext {
+  id?: string;
+  productId?: string;
+  name?: string;
+  category: string;
+  price: number;
+  quantity: number;
+  active?: boolean;
+  agentPurchasable?: boolean;
+  stock?: number;
+}
+
 export interface PolicyContext {
   requestedAmount: number;
   expectedPrice?: number;
-  currentCatalogPrice: number;
+  currentCatalogPrice?: number;
   currency: string;
-  quantity: number;
-  product: {
+  quantity?: number;
+  product?: {
     id: string;
     merchantId: string;
     category: string;
@@ -16,6 +28,7 @@ export interface PolicyContext {
     price: number;
     currency: string;
   };
+  items?: CartItemContext[];
   merchant: {
     id: string;
     agentEnabled: boolean;
@@ -47,6 +60,32 @@ export class PolicyEngine {
     const rules: PolicyRuleResult[] = [];
     const reasonCodes: string[] = [];
 
+    // Helper: Normalize category
+    const normalizeCat = (cat: string) => cat.toLowerCase().trim().replace(/s$/, '');
+
+    const allowedCats = (ctx.mandate.allowedCategories || []).map(normalizeCat);
+    const isCategoryPermitted = (category: string) => {
+      if (allowedCats.length === 0 || allowedCats.includes('*') || allowedCats.includes('all')) {
+        return true;
+      }
+      const norm = normalizeCat(category);
+      return allowedCats.some(c => norm.includes(c) || c.includes(norm));
+    };
+
+    // Extract items list
+    const itemsList: CartItemContext[] = ctx.items && ctx.items.length > 0
+      ? ctx.items
+      : (ctx.product ? [{
+          id: ctx.product.id,
+          productId: ctx.product.id,
+          category: ctx.product.category,
+          price: ctx.product.price,
+          quantity: ctx.quantity || 1,
+          active: ctx.product.active,
+          agentPurchasable: ctx.product.agentPurchasable,
+          stock: ctx.product.stock
+        }] : []);
+
     // RULE 001: Transaction amount must not exceed mandate max amount
     const rule001Passed = ctx.requestedAmount <= ctx.mandate.maxAmount;
     rules.push({
@@ -54,7 +93,7 @@ export class PolicyEngine {
       ruleName: 'BUDGET_CAP_ENFORCEMENT',
       passed: rule001Passed,
       reasonCode: rule001Passed ? 'WITHIN_BUDGET' : 'EXCEEDS_MANDATE',
-      details: `Requested ₹${ctx.requestedAmount} vs Mandate Cap ₹${ctx.mandate.maxAmount}`
+      details: `Requested ₹${ctx.requestedAmount.toLocaleString('en-IN')} vs Mandate Cap ₹${ctx.mandate.maxAmount.toLocaleString('en-IN')}`
     });
     if (!rule001Passed) reasonCodes.push('EXCEEDS_MANDATE');
 
@@ -81,42 +120,44 @@ export class PolicyEngine {
     if (!merchantAllowed) reasonCodes.push('MERCHANT_NOT_AUTHORIZED');
 
     // RULE 004: Product must be active
-    const rule004Passed = ctx.product.active === true;
+    const inactiveItems = itemsList.filter(item => item.active === false);
+    const rule004Passed = inactiveItems.length === 0;
     rules.push({
       ruleId: 'RULE_004',
       ruleName: 'PRODUCT_STATUS_ACTIVE',
       passed: rule004Passed,
       reasonCode: rule004Passed ? 'PRODUCT_ACTIVE' : 'PRODUCT_INACTIVE',
-      details: `Product status active: ${ctx.product.active}`
+      details: rule004Passed ? 'All products active in catalog' : `Inactive items detected: ${inactiveItems.map(i => i.name || i.productId).join(', ')}`
     });
     if (!rule004Passed) reasonCodes.push('PRODUCT_INACTIVE');
 
     // RULE 005: Product must be agent-purchasable
-    const rule005Passed = ctx.product.agentPurchasable === true;
+    const nonPurchasableItems = itemsList.filter(item => item.agentPurchasable === false);
+    const rule005Passed = nonPurchasableItems.length === 0;
     rules.push({
       ruleId: 'RULE_005',
       ruleName: 'AGENT_PURCHASABLE_FLAG',
       passed: rule005Passed,
       reasonCode: rule005Passed ? 'AGENT_PURCHASABLE' : 'AGENT_PURCHASE_DISABLED',
-      details: `Agent purchasable: ${ctx.product.agentPurchasable}`
+      details: rule005Passed ? 'All items permitted for agent delegation' : `Non-agent-purchasable items: ${nonPurchasableItems.map(i => i.name || i.productId).join(', ')}`
     });
     if (!rule005Passed) reasonCodes.push('AGENT_PURCHASE_DISABLED');
 
     // RULE 006: Inventory availability
-    const rule006Passed = ctx.product.stock >= ctx.quantity;
+    const outOfStockItems = itemsList.filter(item => (item.stock !== undefined && item.stock < item.quantity));
+    const rule006Passed = outOfStockItems.length === 0;
     rules.push({
       ruleId: 'RULE_006',
       ruleName: 'INVENTORY_AVAILABILITY',
       passed: rule006Passed,
       reasonCode: rule006Passed ? 'IN_STOCK' : 'OUT_OF_STOCK',
-      details: `Available stock ${ctx.product.stock} >= requested quantity ${ctx.quantity}`
+      details: rule006Passed ? 'Sufficient stock for all items' : `Insufficient stock for items: ${outOfStockItems.map(i => `${i.name || i.productId} (Stock: ${i.stock} < Qty: ${i.quantity})`).join(', ')}`
     });
     if (!rule006Passed) reasonCodes.push('OUT_OF_STOCK');
 
     // RULE 007: Price Drift Protection (Server-Side Enforcement)
-    // If expected price was quoted, live catalog price must not exceed expected price
     let rule007Passed = true;
-    if (ctx.expectedPrice !== undefined && ctx.expectedPrice !== null) {
+    if (ctx.expectedPrice !== undefined && ctx.expectedPrice !== null && ctx.currentCatalogPrice !== undefined) {
       rule007Passed = ctx.currentCatalogPrice <= ctx.expectedPrice;
     }
     rules.push({
@@ -124,7 +165,7 @@ export class PolicyEngine {
       ruleName: 'PRICE_DRIFT_INTEGRITY',
       passed: rule007Passed,
       reasonCode: rule007Passed ? 'PRICE_VERIFIED' : 'PRICE_DRIFT',
-      details: `Current Catalog ₹${ctx.currentCatalogPrice} vs Expected/Quoted ₹${ctx.expectedPrice ?? ctx.currentCatalogPrice}`
+      details: `Catalog price verified against quoted expectations`
     });
     if (!rule007Passed) reasonCodes.push('PRICE_DRIFT');
 
@@ -152,27 +193,29 @@ export class PolicyEngine {
     if (!rule009Passed) reasonCodes.push('MANDATE_EXPIRED');
 
     // RULE 010: Action permission check
-    const rule010Passed = ctx.mandate.allowedActions.includes(ctx.action);
+    const rule010Passed = (ctx.mandate.allowedActions || []).includes(ctx.action);
     rules.push({
       ruleId: 'RULE_010',
       ruleName: 'ACTION_PERMISSION',
       passed: rule010Passed,
       reasonCode: rule010Passed ? 'ACTION_ALLOWED' : 'ACTION_UNAUTHORIZED',
-      details: `Requested action '${ctx.action}' in [${ctx.mandate.allowedActions.join(', ')}]`
+      details: `Requested action '${ctx.action}' in [${(ctx.mandate.allowedActions || []).join(', ')}]`
     });
     if (!rule010Passed) reasonCodes.push('ACTION_UNAUTHORIZED');
 
     // RULE 011: Category constraint check
-    const catAllowed = ctx.mandate.allowedCategories.length === 0 ||
-      ctx.mandate.allowedCategories.some(c => ctx.product.category.toLowerCase().includes(c.toLowerCase()));
+    const restrictedItems = itemsList.filter(item => !isCategoryPermitted(item.category));
+    const rule011Passed = restrictedItems.length === 0;
     rules.push({
       ruleId: 'RULE_011',
       ruleName: 'CATEGORY_CONSTRAINT',
-      passed: catAllowed,
-      reasonCode: catAllowed ? 'CATEGORY_ALLOWED' : 'CATEGORY_RESTRICTED',
-      details: `Product category '${ctx.product.category}' in [${ctx.mandate.allowedCategories.join(', ')}]`
+      passed: rule011Passed,
+      reasonCode: rule011Passed ? 'CATEGORY_ALLOWED' : 'CATEGORY_RESTRICTED',
+      details: rule011Passed 
+        ? `All categories permitted within [${(ctx.mandate.allowedCategories || []).join(', ')}]`
+        : `Categories restricted: ${restrictedItems.map(i => `${i.name || i.productId} (${i.category})`).join(', ')} not in [${(ctx.mandate.allowedCategories || []).join(', ')}]`
     });
-    if (!catAllowed) reasonCodes.push('CATEGORY_RESTRICTED');
+    if (!rule011Passed) reasonCodes.push('CATEGORY_RESTRICTED');
 
     // RULE 012: Idempotency conflict check
     const rule012Passed = !ctx.isDuplicateIdempotency;

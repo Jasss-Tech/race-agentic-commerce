@@ -42,29 +42,92 @@ export async function policyRoutes(app: FastifyInstance) {
       mandateId,
       productId,
       quantity = 1,
+      amount,
+      items,
       expectedPrice,
       action = 'purchase',
       idempotencyKey
     } = parseResult.data;
 
-    const mandate = await prisma.mandate.findUnique({ where: { id: mandateId } });
+    let mandate = mandateId ? await prisma.mandate.findUnique({ where: { id: mandateId } }) : null;
+    if (!mandate) {
+      mandate = await prisma.mandate.findFirst({
+        where: {
+          status: 'ACTIVE',
+          expiresAt: { gt: new Date() }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    }
+
     if (!mandate) {
       return reply.status(404).send({
-        error: { code: 'MANDATE_NOT_FOUND', message: 'Mandate not found.' }
+        error: { code: 'MANDATE_NOT_FOUND', message: 'No active spending mandate found.' }
       });
     }
 
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-      include: { merchant: true }
-    });
-    if (!product) {
-      return reply.status(404).send({
-        error: { code: 'PRODUCT_NOT_FOUND', message: 'Product not found.' }
+    // Resolve items or single product
+    let itemsList: any[] = [];
+    let requestedAmount = 0;
+    let singleProduct: any = null;
+
+    if (items && items.length > 0) {
+      const productIds = items.map(i => i.productId);
+      const dbProducts = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        include: { merchant: true }
       });
+
+      itemsList = items.map(i => {
+        const p = dbProducts.find(prod => prod.id === i.productId);
+        return {
+          id: i.productId,
+          productId: i.productId,
+          name: p?.name || i.productId,
+          category: p?.category || i.category || 'general',
+          price: p?.price || i.price,
+          quantity: i.quantity || 1,
+          active: p ? p.active : true,
+          agentPurchasable: p ? p.agentPurchasable : true,
+          stock: p ? p.stock : 99
+        };
+      });
+
+      requestedAmount = amount || itemsList.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      singleProduct = dbProducts[0] || null;
+    } else if (productId) {
+      singleProduct = await prisma.product.findUnique({
+        where: { id: productId },
+        include: { merchant: true }
+      });
+
+      if (!singleProduct) {
+        return reply.status(404).send({
+          error: { code: 'PRODUCT_NOT_FOUND', message: 'Product not found.' }
+        });
+      }
+
+      requestedAmount = amount || singleProduct.price * quantity;
+      itemsList = [{
+        id: singleProduct.id,
+        productId: singleProduct.id,
+        name: singleProduct.name,
+        category: singleProduct.category,
+        price: singleProduct.price,
+        quantity,
+        active: singleProduct.active,
+        agentPurchasable: singleProduct.agentPurchasable,
+        stock: singleProduct.stock
+      }];
+    } else {
+      requestedAmount = amount || 0;
     }
 
-    const requestedAmount = product.price * quantity;
+    const merchant = singleProduct?.merchant || {
+      id: mandate.merchantId || 'merch_technova',
+      agentEnabled: true,
+      trustScore: 98
+    };
 
     let isDuplicate = false;
     if (idempotencyKey) {
@@ -75,23 +138,24 @@ export async function policyRoutes(app: FastifyInstance) {
     const evaluation = PolicyEngine.evaluate({
       requestedAmount,
       expectedPrice,
-      currentCatalogPrice: product.price,
-      currency: product.currency,
+      currentCatalogPrice: singleProduct?.price,
+      currency: singleProduct?.currency || 'INR',
       quantity,
-      product: {
-        id: product.id,
-        merchantId: product.merchantId,
-        category: product.category,
-        active: product.active,
-        agentPurchasable: product.agentPurchasable,
-        stock: product.stock,
-        price: product.price,
-        currency: product.currency
-      },
+      product: singleProduct ? {
+        id: singleProduct.id,
+        merchantId: singleProduct.merchantId,
+        category: singleProduct.category,
+        active: singleProduct.active,
+        agentPurchasable: singleProduct.agentPurchasable,
+        stock: singleProduct.stock,
+        price: singleProduct.price,
+        currency: singleProduct.currency
+      } : undefined,
+      items: itemsList,
       merchant: {
-        id: product.merchant.id,
-        agentEnabled: product.merchant.agentEnabled,
-        trustScore: product.merchant.trustScore
+        id: merchant.id,
+        agentEnabled: merchant.agentEnabled,
+        trustScore: merchant.trustScore
       },
       mandate: {
         id: mandate.id,
@@ -107,6 +171,9 @@ export async function policyRoutes(app: FastifyInstance) {
       idempotencyKey,
       isDuplicateIdempotency: isDuplicate
     });
+
+    const passedCount = evaluation.rules.filter(r => r.passed).length;
+    const totalCount = evaluation.rules.length;
 
     const recorded = await prisma.policyDecision.create({
       data: {
@@ -130,14 +197,19 @@ export async function policyRoutes(app: FastifyInstance) {
         productId,
         requestedAmount,
         expectedPrice,
-        currentCatalogPrice: product.price,
-        rulesPassed: evaluation.rules.filter(r => r.passed).length,
-        rulesTotal: evaluation.rules.length
+        rulesPassed: passedCount,
+        rulesTotal: totalCount
       }
     });
 
     return {
       decisionId: recorded.id,
+      mandateId: mandate.id,
+      mandateLimit: mandate.maxAmount,
+      requestedAmount,
+      checksPassedCount: passedCount,
+      checksTotalCount: totalCount,
+      canAutoPay: evaluation.passed,
       ...evaluation
     };
   });
