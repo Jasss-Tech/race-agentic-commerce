@@ -11,6 +11,8 @@ While modern LLMs and autonomous agents have the natural-language **capability**
 
 ## 🏛️ Architecture Overview
 
+![alt text](<RACE Bounded-Autonomy Commerce Architecture.png>)
+
 ```
 Buyer Agent (Natural Language / Machine-Readable ACP Feed)
     ↓
