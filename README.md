@@ -9,6 +9,24 @@ While modern LLMs and autonomous agents have the natural-language **capability**
 
 ---
 
+## 🌐 Live Demo & 🎥 Demo Video
+
+### 🚀 Live Demo
+
+**[Open RACE Live Demo](https://race-agentic-commerce-web-omega.vercel.app/)**
+
+Experience the complete RACE platform, including the AI Buyer, bounded authorization, policy and risk evaluation, Razorpay Test Mode checkout, cryptographic transaction proofs, merchant growth intelligence, and Agent Passport.
+
+### 🎥 Product Demo Video
+
+**[Watch the RACE Demo on YouTube](https://youtu.be/Gu5sk_KvrII?si=Y3poCnuafP2ab0MI)**
+
+A walkthrough of the RACE architecture and end-to-end agentic commerce flow:
+
+**AI Intent → Mandate Validation → Policy & Risk → Authorization → Razorpay Execution → Cryptographic Proof → Merchant Growth**
+
+---
+
 ## 🏛️ Architecture Overview
 
 ![alt text](<RACE Bounded-Autonomy Commerce Architecture.png>)
