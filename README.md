@@ -29,7 +29,8 @@ A walkthrough of the RACE architecture and end-to-end agentic commerce flow:
 
 ## 🏛️ Architecture Overview
 
-![alt text](<RACE Bounded-Autonomy Commerce Architecture.png>)
+![alt text]<img width="1755" height="1714" alt="RACE Bounded-Autonomy Commerce Architecture (1)" src="https://github.com/user-attachments/assets/f18c9d98-e655-41cd-99c3-ed9d9dfcb179" />
+
 
 ```
 Buyer Agent (Natural Language / Machine-Readable ACP Feed)
